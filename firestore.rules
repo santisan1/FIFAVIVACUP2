@@ -1,0 +1,57 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function isAdmin() {
+      return signedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+    function isSelf(userId) { return signedIn() && request.auth.uid == userId; }
+
+    match /users/{userId} {
+      allow read: if isAdmin() || isSelf(userId);
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /seasons/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /tournaments/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /participants/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /matches/{id} {
+      allow read: if true;
+      // MVP: players propose results via resultProposals; direct match writes stay admin-only.
+      allow write: if isAdmin();
+    }
+
+    match /goals/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /badges/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /resultProposals/{id} {
+      allow read: if isAdmin() || (signedIn() && resource.data.proposedBy == request.auth.uid);
+      allow create: if signedIn() && request.resource.data.proposedBy == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    match /invites/{id} {
+      // Invites contain tokenHash and are never readable by players/public clients.
+      allow read, write: if isAdmin();
+    }
+  }
+}
