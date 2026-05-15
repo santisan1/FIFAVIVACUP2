@@ -1,0 +1,40 @@
+import { AdminRoute } from './components/AdminRoute';
+import { AppShell } from './components/AppShell';
+import { ProtectedRoute } from './components/ProtectedRoute';
+import { useRouter } from './components/Router';
+import { AdminDashboardPage } from './pages/AdminDashboardPage';
+import { AdminDrawPage } from './pages/AdminDrawPage';
+import { AdminInvitesPage } from './pages/AdminInvitesPage';
+import { AdminMatchesPage } from './pages/AdminMatchesPage';
+import { AdminPlayersPage } from './pages/AdminPlayersPage';
+import { AdminTournamentPage } from './pages/AdminTournamentPage';
+import { AdminTournamentsPage } from './pages/AdminTournamentsPage';
+import { BracketPage } from './pages/BracketPage';
+import { HomePage } from './pages/HomePage';
+import { InvitePage } from './pages/InvitePage';
+import { LeaderboardPage } from './pages/LeaderboardPage';
+import { LivePage } from './pages/LivePage';
+import { MePage } from './pages/MePage';
+import { MyMatchesPage } from './pages/MyMatchesPage';
+import { ScorersPage } from './pages/ScorersPage';
+
+export function App() {
+  const { path } = useRouter();
+  const parts = path.split('/').filter(Boolean);
+  let page = <HomePage />;
+  if (path === '/live') page = <LivePage />;
+  else if (path === '/leaderboard') page = <LeaderboardPage />;
+  else if (parts[0] === 'bracket' && parts[1]) page = <BracketPage tournamentId={parts[1]} />;
+  else if (parts[0] === 'scorers') page = <ScorersPage />;
+  else if (parts[0] === 'invite' && parts[1]) page = <InvitePage token={parts[1]} />;
+  else if (path === '/me') page = <ProtectedRoute><MePage /></ProtectedRoute>;
+  else if (path === '/me/matches') page = <ProtectedRoute><MyMatchesPage /></ProtectedRoute>;
+  else if (path === '/admin') page = <AdminRoute><AdminDashboardPage /></AdminRoute>;
+  else if (path === '/admin/players') page = <AdminRoute><AdminPlayersPage /></AdminRoute>;
+  else if (path === '/admin/tournaments') page = <AdminRoute><AdminTournamentsPage /></AdminRoute>;
+  else if (parts[0] === 'admin' && parts[1] === 'tournaments' && parts[2] && !parts[3]) page = <AdminRoute><AdminTournamentPage id={parts[2]} /></AdminRoute>;
+  else if (parts[0] === 'admin' && parts[1] === 'tournaments' && parts[2] && parts[3] === 'draw') page = <AdminRoute><AdminDrawPage id={parts[2]} /></AdminRoute>;
+  else if (parts[0] === 'admin' && parts[1] === 'tournaments' && parts[2] && parts[3] === 'matches') page = <AdminRoute><AdminMatchesPage id={parts[2]} /></AdminRoute>;
+  else if (parts[0] === 'admin' && parts[1] === 'tournaments' && parts[2] && parts[3] === 'invites') page = <AdminRoute><AdminInvitesPage id={parts[2]} /></AdminRoute>;
+  return <AppShell>{page}</AppShell>;
+}

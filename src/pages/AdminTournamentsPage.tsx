@@ -1,0 +1,7 @@
+import { useEffect, useState } from 'react';
+import { AdminLayout } from '../components/AdminLayout';
+import { Link } from '../components/Router';
+import { useAuth } from '../context/AuthContext';
+import { createTournament, listTournaments } from '../lib/firestore';
+import type { Tournament } from '../types';
+export function AdminTournamentsPage() { const { profile } = useAuth(); const [items, setItems] = useState<Tournament[]>([]); const [form, setForm] = useState({ name: 'Viva Cup I', date: '2026-05-23' }); const refresh = () => listTournaments().then(setItems); useEffect(() => { void refresh(); }, []); return <AdminLayout><div className="space-y-6"><h1 className="text-4xl font-black">Torneos</h1><form className="glass grid gap-3 rounded-3xl p-4 md:grid-cols-3" onSubmit={(e) => { e.preventDefault(); if (!profile) return; createTournament({ ...form, createdBy: profile.id }).then(refresh); }}><input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /><input className="input" type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /><button className="btn btn-primary">Crear torneo</button></form><div className="grid gap-3">{items.map((t) => <Link key={t.id} to={`/admin/tournaments/${t.id}`} className="glass rounded-3xl p-4"><p className="font-black">{t.name}</p><p className="text-sm text-slate-400">{t.date} · {t.status}</p></Link>)}</div></div></AdminLayout>; }

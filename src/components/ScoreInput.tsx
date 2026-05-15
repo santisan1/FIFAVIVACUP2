@@ -1,0 +1,1 @@
+export function ScoreInput() { return <div className="glass rounded-3xl p-5"><h3 className="font-black">Carga manual rápida</h3><p className="text-sm text-slate-400">Componente preparado para Fase 2: goles, penales y foto opcional sin bloquear el flujo.</p></div>; }

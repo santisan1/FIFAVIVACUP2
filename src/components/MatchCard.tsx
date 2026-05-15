@@ -1,0 +1,5 @@
+import type { Match } from '../types';
+export function MatchCard({ match }: { match: Match }) {
+  return <div className="glass rounded-3xl p-4"><div className="flex items-center justify-between text-xs uppercase tracking-[.2em] text-slate-400"><span>{match.roundLabel}</span><span>{match.status}</span></div><div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-3"><Team name={match.playerAName} team={match.teamAName} /><div className="rounded-2xl bg-black/30 px-3 py-2 text-xl font-black">{match.scoreA ?? '-'} : {match.scoreB ?? '-'}</div><Team align="right" name={match.playerBName} team={match.teamBName} /></div>{match.narrative && <p className="mt-3 text-sm text-slate-300">{match.narrative}</p>}</div>;
+}
+function Team({ name, team, align = 'left' }: { name?: string; team?: string; align?: 'left' | 'right' }) { return <div className={align === 'right' ? 'text-right' : ''}><p className="font-black">{name ?? 'Por definir'}</p><p className="text-xs text-slate-400">{team ?? 'TBD'}</p></div>; }
