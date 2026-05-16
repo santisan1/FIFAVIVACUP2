@@ -33,7 +33,7 @@ function safeStats(stats = {}) {
 }
 
 export function playerMagicLink(player, origin = import.meta.env.VITE_PUBLIC_APP_URL || import.meta.env.PUBLIC_APP_URL || window.location.origin) {
-  return `${origin}/player/${player.id}?token=${player.accessToken}`;
+  return `${origin.replace(/\/$/, '')}/player/${player.id}?token=${player.accessToken}`;
 }
 
 export async function listPlayers() {
@@ -72,8 +72,14 @@ export async function regeneratePlayerToken(id) {
 }
 
 export async function listTournaments() {
-  const snap = await getDocs(query(collection(db, 'tournaments'), orderBy('createdAt', 'desc')));
-  return snap.docs.map((item) => withId(item));
+  try {
+    const snap = await getDocs(query(collection(db, 'tournaments'), orderBy('createdAt', 'desc')));
+    return snap.docs.map((item) => withId(item));
+  } catch (error) {
+    if (import.meta.env.DEV) console.warn('listTournaments ordered query failed; using client fallback.', error);
+    const snap = await getDocs(collection(db, 'tournaments'));
+    return sortTournamentsDesc(snap.docs.map((item) => withId(item)));
+  }
 }
 
 export async function getTournament(id) {
@@ -84,13 +90,29 @@ export async function getTournament(id) {
 function timestampValue(value) {
   if (!value) return 0;
   if (typeof value.seconds === 'number') return value.seconds;
+  if (typeof value.toMillis === 'function') return Math.floor(value.toMillis() / 1000);
   if (value instanceof Date) return Math.floor(value.getTime() / 1000);
   return 0;
 }
 
+function tournamentSortValue(tournament) {
+  return timestampValue(tournament.createdAt) || timestampValue(tournament.updatedAt) || 0;
+}
+
+function sortTournamentsDesc(rows) {
+  return [...rows].sort((a, b) => tournamentSortValue(b) - tournamentSortValue(a));
+}
+
 export async function getActiveTournament() {
-  const snap = await getDocs(query(collection(db, 'tournaments'), where('status', 'in', ['draft', 'draw', 'active']), orderBy('createdAt', 'desc'), limit(1)));
-  return snap.docs[0] ? withId(snap.docs[0]) : null;
+  const statuses = ['draft', 'lobby', 'draw', 'active'];
+  try {
+    const snap = await getDocs(query(collection(db, 'tournaments'), where('status', 'in', statuses)));
+    return sortTournamentsDesc(snap.docs.map((item) => withId(item)))[0] ?? null;
+  } catch (error) {
+    if (import.meta.env.DEV) console.warn('getActiveTournament status query failed; trying ordered fallback.', error);
+    const fallbackSnap = await getDocs(query(collection(db, 'tournaments'), where('status', 'in', statuses), orderBy('createdAt', 'desc'), limit(1)));
+    return fallbackSnap.docs[0] ? withId(fallbackSnap.docs[0]) : null;
+  }
 }
 
 export async function createTournament(input) {
@@ -106,25 +128,50 @@ export async function createTournament(input) {
   return ref.id;
 }
 
+function tournamentPlayerDocId(tournamentId, playerId) {
+  return `${tournamentId}_${playerId}`;
+}
+
+function sortTournamentPlayers(rows) {
+  return [...rows].sort((a, b) => (a.seed ?? 99) - (b.seed ?? 99));
+}
+
+function dedupeTournamentPlayers(rows) {
+  const byPlayerId = new Map();
+  sortTournamentPlayers(rows).forEach((row) => {
+    if (!byPlayerId.has(row.playerId)) byPlayerId.set(row.playerId, row);
+  });
+  return [...byPlayerId.values()];
+}
+
 export async function listTournamentPlayers(tournamentId) {
   const snap = await getDocs(query(collection(db, 'tournamentPlayers'), where('tournamentId', '==', tournamentId)));
-  return snap.docs.map((item) => withId(item)).sort((a, b) => (a.seed ?? 99) - (b.seed ?? 99));
+  return dedupeTournamentPlayers(snap.docs.map((item) => withId(item)));
 }
 
 export async function addTournamentPlayer(tournamentId, player, teamName) {
   const existing = await listTournamentPlayers(tournamentId);
   if (existing.length >= 16) throw new Error('El torneo ya tiene 16 jugadores.');
-  if (existing.some((item) => item.playerId === player.id)) return;
-  await addDoc(collection(db, 'tournamentPlayers'), {
+  if (existing.some((item) => item.playerId === player.id)) throw new Error('Este jugador ya está en este torneo.');
+
+  const ref = doc(db, 'tournamentPlayers', tournamentPlayerDocId(tournamentId, player.id));
+  const current = await getDoc(ref);
+  if (current.exists()) throw new Error('Este jugador ya está en este torneo.');
+
+  await setDoc(ref, {
     tournamentId,
     playerId: player.id,
     playerName: player.name,
     playerNickname: player.nickname,
-    teamName: teamName || player.currentTeam,
+    teamName: (teamName ?? player.currentTeam ?? '').trim(),
     seed: existing.length + 1,
     eliminated: false,
     finalPosition: null,
+    ready: false,
+    joinedAt: null,
+    lastSeenAt: null,
     createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
   });
 }
 
@@ -133,10 +180,17 @@ export async function addTournamentPlayers(tournamentId, selectedPlayers) {
   const existing = await listTournamentPlayers(tournamentId);
   const existingIds = new Set(existing.map((item) => item.playerId));
   const availableSlots = Math.max(0, 16 - existing.length);
-  const playersToAdd = selectedPlayers.filter((player) => !existingIds.has(player.id)).slice(0, availableSlots);
+  const uniqueSelection = [];
+  const seen = new Set();
+  selectedPlayers.forEach((player) => {
+    if (!player?.id || seen.has(player.id) || existingIds.has(player.id)) return;
+    seen.add(player.id);
+    uniqueSelection.push(player);
+  });
+  const playersToAdd = uniqueSelection.slice(0, availableSlots);
   const batch = writeBatch(db);
   playersToAdd.forEach((player, index) => {
-    batch.set(doc(collection(db, 'tournamentPlayers')), {
+    batch.set(doc(db, 'tournamentPlayers', tournamentPlayerDocId(tournamentId, player.id)), {
       tournamentId,
       playerId: player.id,
       playerName: player.name,
@@ -145,15 +199,85 @@ export async function addTournamentPlayers(tournamentId, selectedPlayers) {
       seed: existing.length + index + 1,
       eliminated: false,
       finalPosition: null,
+      ready: false,
+      joinedAt: null,
+      lastSeenAt: null,
       createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
     });
   });
   await batch.commit();
   return playersToAdd.length;
 }
 
+
+export async function updateTournamentPlayerTeam(participant, teamName, { makeDefault = false } = {}) {
+  const cleanTeamName = teamName.trim();
+  const batch = writeBatch(db);
+  batch.update(doc(db, 'tournamentPlayers', participant.id), { teamName: cleanTeamName, updatedAt: serverTimestamp() });
+  if (makeDefault) batch.update(doc(db, 'players', participant.playerId), { currentTeam: cleanTeamName, updatedAt: serverTimestamp() });
+
+  const matches = await listMatches(participant.tournamentId);
+  matches.filter((match) => match.status !== 'finished' && (match.playerAId === participant.playerId || match.playerBId === participant.playerId)).forEach((match) => {
+    batch.update(doc(db, 'matches', match.id), {
+      ...(match.playerAId === participant.playerId ? { teamA: cleanTeamName } : {}),
+      ...(match.playerBId === participant.playerId ? { teamB: cleanTeamName } : {}),
+    });
+  });
+  await batch.commit();
+}
+
 export async function removeTournamentPlayer(id) {
   await deleteDoc(doc(db, 'tournamentPlayers', id));
+}
+
+export async function updateTournamentStatus(tournamentId, status) {
+  await updateDoc(doc(db, 'tournaments', tournamentId), { status, updatedAt: serverTimestamp() });
+}
+
+export async function openTournamentLobby(tournamentId) {
+  await updateTournamentStatus(tournamentId, 'lobby');
+}
+
+export async function setTournamentPlayerReady(participant, ready = true) {
+  await updateDoc(doc(db, 'tournamentPlayers', participant.id), {
+    ready,
+    ...(ready ? { joinedAt: participant.joinedAt || serverTimestamp(), lastSeenAt: serverTimestamp() } : { joinedAt: null, lastSeenAt: null }),
+    updatedAt: serverTimestamp(),
+  });
+}
+
+export async function resetTournamentPresence(tournamentId) {
+  const participants = await listTournamentPlayers(tournamentId);
+  const batch = writeBatch(db);
+  participants.forEach((participant) => batch.update(doc(db, 'tournamentPlayers', participant.id), { ready: false, joinedAt: null, lastSeenAt: null, updatedAt: serverTimestamp() }));
+  await batch.commit();
+}
+
+async function findTournamentPlayer(tournamentId, playerId) {
+  const deterministic = await getDoc(doc(db, 'tournamentPlayers', tournamentPlayerDocId(tournamentId, playerId)));
+  if (deterministic.exists()) return withId(deterministic);
+  const snap = await getDocs(query(collection(db, 'tournamentPlayers'), where('tournamentId', '==', tournamentId), where('playerId', '==', playerId), limit(1)));
+  return snap.docs[0] ? withId(snap.docs[0]) : null;
+}
+
+export async function joinTournamentLobby(tournamentId, playerId, tokenValue) {
+  const [player, tournament] = await Promise.all([getPlayer(playerId), getTournament(tournamentId)]);
+  if (!player) return { valid: false, reason: 'Jugador no encontrado' };
+  if (!tokenValue) return { valid: false, reason: 'Falta el token del magic link', player };
+  if (tokenValue !== player.accessToken) return { valid: false, reason: 'Token incorrecto o regenerado', player };
+  if (!tournament) return { valid: false, reason: 'Torneo no encontrado', player };
+  const participant = await findTournamentPlayer(tournamentId, playerId);
+  if (!participant) return { valid: false, reason: 'No estás cargado en este torneo.', player, tournament };
+  await updateDoc(doc(db, 'tournamentPlayers', participant.id), {
+    ready: true,
+    joinedAt: participant.joinedAt || serverTimestamp(),
+    lastSeenAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+  const [participants, status] = await Promise.all([listTournamentPlayers(tournamentId), getPlayerTournamentStatus(playerId, tournamentId)]);
+  const readyCount = participants.filter((item) => item.ready || item.playerId === playerId).length;
+  return { valid: true, player, tournament, participant: { ...participant, ready: true }, participantsCount: participants.length, readyCount, status };
 }
 
 export async function listMatches(tournamentId) {
@@ -184,6 +308,7 @@ export async function listFeed(tournamentId) {
 export async function runDraw(tournamentId) {
   const [players, existingMatches] = await Promise.all([listTournamentPlayers(tournamentId), listMatches(tournamentId)]);
   if (existingMatches.length > 0) throw new Error('Este torneo ya tiene bracket sorteado.');
+  if (players.length !== 16) throw new Error('El sorteo necesita exactamente 16 jugadores únicos.');
   const matches = createInitialMatches(players, tournamentId);
   const batch = writeBatch(db);
   matches.forEach((match) => batch.set(doc(collection(db, 'matches')), { ...match, imageUrl: '', createdAt: serverTimestamp() }));
@@ -295,6 +420,19 @@ export async function closeMatch(match, scoreA, scoreB, goals) {
   if (match.round === 'FINAL') await awardTournamentPoints(tournament, winner.winnerId, winner.loserId);
 }
 
+function goalsFor(matches, playerId) {
+  return matches.reduce((total, match) => {
+    if (match.status !== 'finished') return total;
+    if (match.playerAId === playerId) return total + Number(match.scoreA ?? 0);
+    if (match.playerBId === playerId) return total + Number(match.scoreB ?? 0);
+    return total;
+  }, 0);
+}
+
+function lossesFor(matches, playerId) {
+  return matches.filter((match) => match.loserId === playerId).length;
+}
+
 function goalsAgainstFor(matches, playerId) {
   return matches.reduce((total, match) => {
     if (match.status !== 'finished') return total;
@@ -367,8 +505,13 @@ async function awardTournamentPoints(tournament, championId, runnerUpId) {
       teamName: participant.teamName,
       placement,
       finalPosition,
+      pointsEarned: totalTournamentPoints,
       wins: winsFor(matches, participant.playerId),
+      losses: lossesFor(matches, participant.playerId),
+      goalsFor: goalsFor(matches, participant.playerId),
       goalsAgainst: goalsAgainstFor(matches, participant.playerId),
+      title: participant.playerId === championId,
+      runnerUp: participant.playerId === runnerUpId,
       placementPoints: placementPointValue,
       victoryPoints: winsFor(matches, participant.playerId) * 2,
       scorerBonus,
@@ -487,7 +630,9 @@ export async function getPlayerTournamentStatus(playerId, tournamentId) {
 
 export async function getPlayerDashboard(playerId, tokenValue) {
   const player = await getPlayer(playerId);
-  if (!player || !tokenValue || tokenValue !== player.accessToken) return { valid: false, player };
+  if (!player) return { valid: false, reason: 'Jugador no encontrado', player: null };
+  if (!tokenValue) return { valid: false, reason: 'Falta el token del magic link', player };
+  if (tokenValue !== player.accessToken) return { valid: false, reason: 'Token incorrecto o regenerado', player };
   const activeTournament = await getActiveTournament();
   const season = activeTournament?.season ?? new Date().getFullYear();
   const [status, recentMatches, seasonPosition, results] = await Promise.all([

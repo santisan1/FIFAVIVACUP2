@@ -14,18 +14,26 @@ export function PlayerProfilePage() {
 
   useEffect(() => {
     setLoading(true);
-    void getPlayerDashboard(playerId, params.get('token')).then(setDashboard).finally(() => setLoading(false));
+    void getPlayerDashboard(playerId, params.get('token'))
+      .then(setDashboard)
+      .catch((error) => {
+        if (import.meta.env.DEV) console.error('No se pudo cargar el magic link.', error);
+        setDashboard({ valid: false, reason: 'No se pudo cargar Firestore. Revisá conexión o permisos.' });
+      })
+      .finally(() => setLoading(false));
   }, [playerId, params]);
 
   if (loading) return <Skeleton />;
-  if (!dashboard?.valid) return <InvalidLink />;
+  if (!dashboard?.valid) return <InvalidLink reason={dashboard?.reason} />;
 
   const { player, activeTournament, status, recentMatches, seasonPosition, results, season } = dashboard;
   const stats = player.statsGlobal;
   const badges = badgesForPlayer({ titles: stats.titles, runnerUps: stats.runnerUps, goalsFor: stats.goalsFor, goalsAgainst: stats.goalsAgainst, wins: stats.wins, losses: stats.losses });
   const mainBadge = status.isChampion ? '🏆 Campeón' : badges[0];
   const annualPoints = seasonPosition.row?.points ?? stats.annualPoints?.[String(season)] ?? 0;
-  const next = status.nextMatch;
+  const participant = status.participant;
+  const tournamentTeam = participant?.teamName || '';
+  const next = participant ? status.nextMatch : null;
   const last = status.lastMatch;
   const lost = status.lostMatch;
 
@@ -37,7 +45,8 @@ export function PlayerProfilePage() {
           <div>
             <div className="mb-3 inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-black">{mainBadge}</div>
             <h1 className="text-5xl font-black md:text-6xl">{player.nickname}</h1>
-            <p className="mt-2 text-slate-300">{player.name} · {player.currentTeam || 'Equipo pendiente'}</p>
+            <p className="mt-2 text-slate-300">Perfil histórico: {player.name} · default {player.currentTeam || 'sin equipo habitual'}</p>
+            <p className="mt-2 text-sm font-black text-electric">Equipo en torneo activo: {tournamentTeam || 'pendiente / no cargado'}</p>
             <p className="mt-3 inline-flex rounded-full bg-white/10 px-4 py-2 text-sm font-black">Estado: {status.state}</p>
           </div>
           <div className="grid grid-cols-2 gap-3 text-center">
@@ -50,10 +59,12 @@ export function PlayerProfilePage() {
       <section className="glass rounded-3xl p-5 shadow-card">
         <h2 className="text-xl font-black">Tu camino en el torneo</h2>
         {!activeTournament && <Empty text="Todavía no hay torneo activo." />}
-        {activeTournament && (
-          <div className="mt-4 grid gap-3 md:grid-cols-3">
+        {activeTournament && !participant && <Empty text="Todavía no estás cargado en el torneo activo." />}
+        {activeTournament && participant && (
+          <div className="mt-4 grid gap-3 md:grid-cols-4">
             <div className="rounded-3xl bg-white/5 p-4"><p className="text-xs uppercase tracking-[.2em] text-slate-400">Torneo activo</p><b className="mt-2 block text-lg">{activeTournament.name}</b><p className="text-sm text-slate-400">{activeTournament.status}</p></div>
-            <div className="rounded-3xl bg-white/5 p-4"><p className="text-xs uppercase tracking-[.2em] text-slate-400">Próximo paso</p>{next ? <><b className="mt-2 block text-lg">vs {next.playerAId === player.id ? next.playerBName : next.playerAName}</b><p className="text-sm text-slate-400">{roundLabels[next.round]} · {next.playerAId === player.id ? next.teamB : next.teamA}</p></> : <p className="mt-2 text-sm text-slate-300">{status.isChampion ? 'Levantaste la copa.' : status.eliminated ? 'Camino cerrado.' : 'Esperando rival.'}</p>}</div>
+            <div className="rounded-3xl bg-white/5 p-4"><p className="text-xs uppercase tracking-[.2em] text-slate-400">Equipo usado en este torneo</p><b className="mt-2 block text-lg">{tournamentTeam || 'Equipo pendiente'}</b><p className="text-sm text-slate-400">No editable desde el magic link.</p></div>
+            <div className="rounded-3xl bg-white/5 p-4"><p className="text-xs uppercase tracking-[.2em] text-slate-400">Próximo rival</p>{next ? <><b className="mt-2 block text-lg">vs {next.playerAId === player.id ? next.playerBName : next.playerAName}</b><p className="text-sm text-slate-400">{roundLabels[next.round]} · {next.playerAId === player.id ? next.teamB : next.teamA}</p></> : <p className="mt-2 text-sm text-slate-300">{status.isChampion ? 'Levantaste la copa.' : status.eliminated ? 'Camino cerrado.' : 'Esperando rival.'}</p>}</div>
             <div className="rounded-3xl bg-white/5 p-4"><p className="text-xs uppercase tracking-[.2em] text-slate-400">Último resultado</p>{last ? <><b className="mt-2 block text-lg">{last.playerAName} {last.scoreA}-{last.scoreB} {last.playerBName}</b><p className={last.winnerId === player.id ? 'text-sm text-winner' : 'text-sm text-danger'}>{last.winnerId === player.id ? 'Victoria' : 'Derrota'} · {roundLabels[last.round]}</p></> : <p className="mt-2 text-sm text-slate-300">Todavía no jugaste.</p>}</div>
           </div>
         )}
@@ -67,7 +78,7 @@ export function PlayerProfilePage() {
 
       <section className="grid gap-5 lg:grid-cols-2">
         <Panel title="Últimos partidos">{recentMatches.length === 0 ? <Empty text="Aún no hay partidos cerrados." /> : recentMatches.map((match) => <div key={match.id} className="rounded-2xl bg-white/5 p-3 text-sm"><b>{match.playerAName} {match.scoreA}-{match.scoreB} {match.playerBName}</b><p className={match.winnerId === player.id ? 'text-winner' : 'text-danger'}>{match.winnerId === player.id ? 'Victoria' : 'Derrota'} · {roundLabels[match.round]}</p></div>)}</Panel>
-        <Panel title="Ranking anual"><div className="space-y-2">{seasonPosition.top5.map((row, index) => <div key={row.playerId} className={`flex items-center justify-between rounded-2xl p-3 text-sm ${row.playerId === player.id ? 'bg-electric/15' : 'bg-white/5'}`}><span>#{index + 1} {row.nickname}</span><b>{row.points} pts</b></div>)}{seasonPosition.pointsBehindAbove > 0 && <p className="text-xs text-slate-400">Estás a {seasonPosition.pointsBehindAbove} pts del de arriba.</p>}</div></Panel>
+        <Panel title="Ranking anual"><p className="text-xs text-slate-400">Acumula por jugador permanente, no por equipo ni por participación.</p><div className="space-y-2">{seasonPosition.top5.map((row, index) => <div key={row.playerId} className={`flex items-center justify-between rounded-2xl p-3 text-sm ${row.playerId === player.id ? 'bg-electric/15' : 'bg-white/5'}`}><span>#{index + 1} {row.nickname}<br /><small className="text-slate-400">{row.team || 'sin equipo habitual'}</small></span><b>{row.points} pts</b></div>)}{seasonPosition.pointsBehindAbove > 0 && <p className="text-xs text-slate-400">Estás a {seasonPosition.pointsBehindAbove} pts del de arriba.</p>}</div></Panel>
         <Panel title="Top goleadores del torneo"><ScorersTable rows={status.topScorers ?? []} highlightPlayerId={player.id} /></Panel>
         <Panel title="Torneos jugados">{results.length === 0 ? <Empty text="Todavía no hay torneos cerrados." /> : results.slice(0, 5).map((result) => <div key={result.id} className="flex items-center justify-between rounded-2xl bg-white/5 p-3 text-sm"><span>{result.tournamentName}<br /><small className="text-slate-400">{result.placement}</small></span><b className="text-electric">+{result.annualPoints}</b></div>)}</Panel>
         <Panel title="Badges"><div className="flex flex-wrap gap-2">{badges.map((badge) => <span key={badge} className="rounded-full border border-electric/30 bg-electric/10 px-3 py-2 text-xs font-black text-electric">{badge}</span>)}</div></Panel>
@@ -85,4 +96,4 @@ function StatCard({ label, value, hot = false }) { return <div className={`glass
 function Panel({ title, children }) { return <section className="glass rounded-3xl p-5 shadow-card"><h2 className="mb-4 text-xl font-black">{title}</h2><div className="space-y-2">{children}</div></section>; }
 function Empty({ text }) { return <p className="rounded-2xl border border-dashed border-white/10 p-4 text-sm text-slate-400">{text}</p>; }
 function Skeleton() { return <div className="space-y-4"><div className="glass h-48 animate-pulse rounded-[2rem]" /><div className="grid gap-4 md:grid-cols-3"><div className="glass h-32 animate-pulse rounded-3xl" /><div className="glass h-32 animate-pulse rounded-3xl" /><div className="glass h-32 animate-pulse rounded-3xl" /></div></div>; }
-function InvalidLink() { return <div className="mx-auto max-w-lg glass rounded-3xl p-6 text-center shadow-card"><ShieldAlert className="mx-auto h-10 w-10 text-danger" /><h1 className="mt-3 text-2xl font-black">Link inválido</h1><p className="mt-2 text-slate-300">Este link no es válido o fue regenerado. Pedile uno nuevo al admin.</p></div>; }
+function InvalidLink({ reason }) { return <div className="mx-auto max-w-lg glass rounded-3xl p-6 text-center shadow-card"><ShieldAlert className="mx-auto h-10 w-10 text-danger" /><h1 className="mt-3 text-2xl font-black">Link inválido</h1><p className="mt-2 text-slate-300">{reason || 'Este link no es válido o fue regenerado. Pedile uno nuevo al admin.'}</p></div>; }

@@ -1,15 +1,30 @@
-import { motion } from 'framer-motion';
-import { Dices, Monitor, Save, Trash2, Trophy } from 'lucide-react';
+import { Copy, Dices, Link as LinkIcon, Monitor, Save, Trash2, Trophy, UsersRound } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { AdminLayout } from '../components/AdminLayout';
 import { BracketView } from '../components/BracketView';
 import { ScorersTable } from '../components/ScorersTable';
 import { roundLabels } from '../lib/bracket';
-import { addTournamentPlayers, buildScorers, closeMatch, getTournament, listMatches, listPlayers, listTournamentPlayers, removeTournamentPlayer, runDraw, updateMatchPlayers } from '../lib/firestore';
-import { allPlayerLinksMessage, magicLinkForPlayer, whatsappMessageForPlayer } from '../lib/magicLinks';
+import { addTournamentPlayer, buildScorers, closeMatch, getTournament, listMatches, listPlayers, listTournamentPlayers, openTournamentLobby, removeTournamentPlayer, resetTournamentPresence, runDraw, setTournamentPlayerReady, updateMatchPlayers, updateTournamentPlayerTeam, updateTournamentStatus } from '../lib/firestore';
+import { getAllJoinWhatsappMessages, getJoinLink, getJoinWhatsappMessage } from '../lib/magicLinks';
 
-const tabs = ['Resumen', 'Participantes', 'Bracket', 'Resultados', 'Goleadores', 'Links'];
+const setupTabs = ['Resumen', 'Participantes', 'Sala', 'Sorteo'];
+const liveTabs = ['Resumen', 'Sala', 'Sorteo', 'Bracket', 'Resultados', 'Goleadores'];
+
+function normalize(value = '') {
+  return value.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+function uniquePlayersForPicker(players) {
+  const byId = new Map();
+  players.forEach((player) => byId.set(player.id, player));
+  const byName = new Map();
+  [...byId.values()].forEach((player) => {
+    const key = normalize(player.nickname || player.name);
+    if (!byName.has(key)) byName.set(key, player);
+  });
+  return [...byName.values()].sort((a, b) => (a.nickname || a.name).localeCompare(b.nickname || b.name));
+}
 
 export function AdminTournamentPage() {
   const { id = '' } = useParams();
@@ -17,11 +32,14 @@ export function AdminTournamentPage() {
   const [players, setPlayers] = useState([]);
   const [parts, setParts] = useState([]);
   const [matches, setMatches] = useState([]);
-  const [selected, setSelected] = useState(null);
-  const [selectedIds, setSelectedIds] = useState([]);
-  const [scoreDrafts, setScoreDrafts] = useState({});
   const [scorers, setScorers] = useState([]);
-  const [activeTab, setActiveTab] = useState('Resumen');
+  const [activeTab, setActiveTab] = useState('Participantes');
+  const [selectedMatch, setSelectedMatch] = useState(null);
+  const [selectedPlayerId, setSelectedPlayerId] = useState('');
+  const [teamDraft, setTeamDraft] = useState('');
+  const [teamEdits, setTeamEdits] = useState({});
+  const [habitualEdits, setHabitualEdits] = useState({});
+  const [scoreDrafts, setScoreDrafts] = useState({});
   const [drawing, setDrawing] = useState(false);
   const [error, setError] = useState('');
   const [toast, setToast] = useState('');
@@ -34,17 +52,32 @@ export function AdminTournamentPage() {
     setParts(participantRows);
     setMatches(matchRows);
     setScorers(scorerRows);
-    setScoreDrafts((current) => ({ ...Object.fromEntries(matchRows.map((match) => [match.id, current[match.id] ?? { scoreA: match.scoreA ?? '', scoreB: match.scoreB ?? '' }])) }));
+    setTeamEdits(Object.fromEntries(participantRows.map((part) => [part.id, part.teamName || ''])));
+    setScoreDrafts((current) => Object.fromEntries(matchRows.map((match) => [match.id, current[match.id] ?? { scoreA: match.scoreA ?? '', scoreB: match.scoreB ?? '' }])));
   };
 
   useEffect(() => { void refresh(); }, [id]);
 
   const playerById = useMemo(() => Object.fromEntries(players.map((player) => [player.id, player])), [players]);
-  const tournamentPlayers = useMemo(() => parts.map((part) => ({ ...part, player: playerById[part.playerId] })).filter((part) => part.player), [parts, playerById]);
-  const available = useMemo(() => players.filter((player) => !parts.some((part) => part.playerId === player.id)), [players, parts]);
-  const pendingMatches = useMemo(() => matches.filter((match) => match.status !== 'finished'), [matches]);
-  const finishedMatches = useMemo(() => matches.filter((match) => match.status === 'finished'), [matches]);
-  const readyMatches = useMemo(() => pendingMatches.filter((match) => match.playerAId && match.playerBId), [pendingMatches]);
+  const participants = useMemo(() => parts.map((part) => ({ ...part, player: playerById[part.playerId] })).filter((part) => part.player), [parts, playerById]);
+  const participantIds = useMemo(() => new Set(parts.map((part) => part.playerId)), [parts]);
+  const available = useMemo(() => uniquePlayersForPicker(players).filter((player) => !participantIds.has(player.id)), [players, participantIds]);
+  const selectedPlayer = playerById[selectedPlayerId];
+  const readyMatches = matches.filter((match) => match.status !== 'finished' && match.playerAId && match.playerBId);
+  const finishedMatches = matches.filter((match) => match.status === 'finished');
+  const readyCount = parts.filter((part) => part.ready).length;
+  const canDraw = parts.length === 16 && matches.length === 0;
+  const isSetup = !matches.length && ['draft', 'lobby'].includes(tournament?.status);
+  const tabs = isSetup ? setupTabs : liveTabs;
+
+  useEffect(() => {
+    setTeamDraft(selectedPlayer?.currentTeam || '');
+  }, [selectedPlayer]);
+
+  useEffect(() => {
+    if (!isSetup && !liveTabs.includes(activeTab)) setActiveTab('Resultados');
+    if (isSetup && !setupTabs.includes(activeTab)) setActiveTab('Participantes');
+  }, [activeTab, isSetup]);
 
   async function notify(text) {
     setToast(text);
@@ -57,40 +90,47 @@ export function AdminTournamentPage() {
     window.setTimeout(() => setCopied(''), 1500);
   }
 
+  async function handleAddParticipant() {
+    try {
+      setError('');
+      if (!selectedPlayer) throw new Error('Elegí un jugador para agregarlo al torneo.');
+      if (participantIds.has(selectedPlayer.id)) throw new Error('Este jugador ya está en este torneo.');
+      await addTournamentPlayer(id, selectedPlayer, teamDraft || selectedPlayer.currentTeam || '');
+      setSelectedPlayerId('');
+      setTeamDraft('');
+      await refresh();
+      await notify('Jugador agregado al torneo.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo agregar el jugador.');
+    }
+  }
+
+  async function saveParticipantTeam(participant) {
+    try {
+      setError('');
+      await updateTournamentPlayerTeam(participant, teamEdits[participant.id] || '', { makeDefault: Boolean(habitualEdits[participant.id]) });
+      await refresh();
+      await notify('Equipo guardado.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo guardar el equipo.');
+    }
+  }
+
   async function handleDraw() {
     try {
       setError('');
+      if (readyCount < parts.length && !window.confirm(`Faltan ${parts.length - readyCount} jugadores por entrar. ¿Querés sortear igual?`)) return;
       setDrawing(true);
       await new Promise((resolve) => setTimeout(resolve, 900));
       await runDraw(id);
       await refresh();
-      setActiveTab('Resultados');
-      await notify('Sorteo listo. Ya podés cargar resultados.');
+      setActiveTab('Sorteo');
+      await notify('Sorteo creado. Revelá los cruces uno por uno.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo sortear.');
     } finally {
       setDrawing(false);
     }
-  }
-
-  async function addSelected() {
-    const selectedPlayers = players.filter((player) => selectedIds.includes(player.id));
-    const added = await addTournamentPlayers(id, selectedPlayers);
-    setSelectedIds([]);
-    await refresh();
-    await notify(`${added} jugadores agregados al torneo.`);
-  }
-
-  async function fillFirst16() {
-    const added = await addTournamentPlayers(id, available.slice(0, Math.max(0, 16 - parts.length)));
-    await refresh();
-    await notify(`${added} jugadores agregados para completar el plantel.`);
-  }
-
-  async function addAllAvailable() {
-    const added = await addTournamentPlayers(id, available);
-    await refresh();
-    await notify(`${added} jugadores agregados al torneo.`);
   }
 
   function setDraft(matchId, field, value) {
@@ -107,13 +147,36 @@ export function AdminTournamentPage() {
       if (match.round === 'FINAL' && !window.confirm('¿Cerrar la final y coronar campeón?')) return;
       await closeMatch(match, Number(draft.scoreA), Number(draft.scoreB), []);
       await refresh();
-      await notify('Resultado cerrado. Ganador avanzado, bracket y ranking actualizados.');
+      await notify('Resultado cerrado. Ganador avanzado.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo cerrar el partido.');
     }
   }
 
-  const canDraw = parts.length === 16 && matches.length === 0;
+
+  async function handleOpenLobby() {
+    await openTournamentLobby(id);
+    await refresh();
+    await notify('Sala abierta. Mandá los links a los jugadores.');
+  }
+
+  async function markReady(participant, ready = true) {
+    await setTournamentPlayerReady(participant, ready);
+    await refresh();
+  }
+
+  async function resetPresence() {
+    if (!window.confirm('¿Resetear la presencia de todos los jugadores?')) return;
+    await resetTournamentPresence(id);
+    await refresh();
+  }
+
+  async function startTournament() {
+    await updateTournamentStatus(id, 'active');
+    await refresh();
+    setActiveTab('Resultados');
+    await notify('Torneo en vivo. Ya podés cargar resultados.');
+  }
 
   return (
     <AdminLayout>
@@ -121,62 +184,73 @@ export function AdminTournamentPage() {
         <section className="glass rounded-[2rem] p-5 shadow-card">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
-              <p className="text-xs font-black uppercase tracking-[.3em] text-electric">Gestión de torneo</p>
+              <p className="text-xs font-black uppercase tracking-[.3em] text-electric">{isSetup ? 'Setup del torneo' : 'Torneo en vivo'}</p>
               <h1 className="text-4xl font-black">{tournament?.name ?? 'Torneo'}</h1>
-              <p className="text-sm text-slate-400">{parts.length}/16 jugadores · estado {tournament?.status}</p>
+              <p className="mt-2 text-sm text-slate-300">{isSetup ? 'Elegí jugadores, confirmá equipos y copiá magic links antes del sorteo.' : 'Bracket, resultados, goleadores y modo TV para la juntada.'}</p>
+              <p className="mt-1 text-sm text-slate-400">{parts.length}/16 jugadores · {readyCount}/{parts.length || 16} presentes · {tournament?.status}</p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Link className="btn btn-ghost" to={`/tournament/${id}`}>Vista pública</Link>
+              <Link className="btn btn-ghost" to={`/tournament/${id}`}>Ver torneo</Link>
               <Link className="btn btn-ghost" to={`/tv/${id}`}><Monitor className="h-4 w-4" /> Modo TV</Link>
-              <button disabled={parts.length !== 16 || matches.length > 0 || drawing} className="btn btn-primary disabled:opacity-40" onClick={handleDraw}><Dices className="h-4 w-4" /> Sortear cruces</button>
+              <button disabled={!canDraw || drawing} className="btn btn-primary disabled:opacity-40" onClick={handleDraw}><Dices className="h-4 w-4" /> Iniciar sorteo</button>
             </div>
           </div>
           <div className="mt-4 h-3 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-gradient-to-r from-electric to-violet" style={{ width: `${Math.min(100, (parts.length / 16) * 100)}%` }} /></div>
           {error && <p className="mt-4 rounded-2xl bg-danger/10 p-3 text-sm text-danger">{error}</p>}
           {toast && <p className="mt-4 rounded-2xl bg-winner/10 p-3 text-sm font-black text-winner">{toast}</p>}
-          {drawing && <motion.div initial={{ scale: .95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="mt-5 rounded-3xl border border-electric/30 bg-electric/10 p-5 text-center text-2xl font-black">🎲 La arena decide los cruces...</motion.div>}
+          {drawing && <p className="mt-4 rounded-2xl bg-electric/10 p-3 text-sm font-black text-electric">🎲 Revelando cruces...</p>}
         </section>
 
-        <div className="grid gap-6 xl:grid-cols-[360px_1fr]">
-          <aside className="space-y-5">
-            <section className="glass rounded-3xl p-4 shadow-card">
-              <h2 className="font-black">Agregar jugadores</h2>
-              <div className="mt-3 max-h-72 space-y-2 overflow-auto pr-1">
-                {available.map((player) => <button key={player.id} disabled={parts.length >= 16} className="btn btn-ghost w-full justify-between" onClick={() => addTournamentPlayer(id, player).then(refresh)}><span>{player.nickname}</span><span className="text-xs text-slate-400">{player.currentTeam}</span></button>)}
-              </div>
-            </section>
-            <section className="glass rounded-3xl p-4 shadow-card">
-              <h2 className="font-black">Plantel ({parts.length}/16)</h2>
-              <div className="mt-3 space-y-2">
-                {parts.map((part) => <div key={part.id} className="flex items-center justify-between rounded-2xl bg-white/5 p-3"><span><b>{part.playerNickname}</b><p className="text-xs text-slate-400">{part.teamName}</p></span><button onClick={() => removeTournamentPlayer(part.id).then(refresh)}><Trash2 className="h-4 w-4 text-danger" /></button></div>)}
-              </div>
-            </section>
-            <section className="glass rounded-3xl p-4 shadow-card"><h2 className="mb-3 font-black">Tabla goleadores</h2><ScorersTable rows={scorers} /></section>
-          </aside>
-          <section className="space-y-4"><BracketView matches={matches} onMatchClick={setSelected} admin /></section>
-        </div>
-        {selected && <ResultModal match={selected} participants={parts} onClose={() => setSelected(null)} onSaved={async () => { setSelected(null); setToast('Partido guardado y bracket actualizado.'); window.setTimeout(() => setToast(''), 2200); await refresh(); }} />}
+        <nav className="flex flex-wrap gap-2">
+          {tabs.map((tab) => <button key={tab} className={`btn ${activeTab === tab ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setActiveTab(tab)}>{tab}</button>)}
+        </nav>
+
+        {activeTab === 'Resumen' && <SummaryTab parts={parts} readyMatches={readyMatches} finishedMatches={finishedMatches} scorers={scorers} setActiveTab={setActiveTab} isSetup={isSetup} />}
+        {activeTab === 'Participantes' && <ParticipantsTab available={available} selectedPlayerId={selectedPlayerId} setSelectedPlayerId={setSelectedPlayerId} teamDraft={teamDraft} setTeamDraft={setTeamDraft} selectedPlayer={selectedPlayer} participants={participants} teamEdits={teamEdits} setTeamEdits={setTeamEdits} habitualEdits={habitualEdits} setHabitualEdits={setHabitualEdits} addParticipant={handleAddParticipant} saveParticipantTeam={saveParticipantTeam} refresh={refresh} matches={matches} />}
+        {activeTab === 'Sala' && <LobbyTab tournament={tournament} participants={participants} players={players} readyCount={readyCount} copied={copied} copyText={copyText} openLobby={handleOpenLobby} markReady={markReady} resetPresence={resetPresence} handleDraw={handleDraw} canDraw={canDraw} drawing={drawing} /> }
+        {activeTab === 'Sorteo' && <DrawTab canDraw={canDraw} drawing={drawing} handleDraw={handleDraw} participants={participants} matches={matches} startTournament={startTournament} tournament={tournament} />}
+        {activeTab === 'Bracket' && <section className="space-y-4"><BracketView matches={matches} onMatchClick={setSelectedMatch} admin />{matches.length === 0 && <Empty text="Confirmá 16 jugadores e iniciá el sorteo." />}</section>}
+        {activeTab === 'Resultados' && <ResultsTab matches={matches} scoreDrafts={scoreDrafts} setDraft={setDraft} closeQuickMatch={closeQuickMatch} openModal={setSelectedMatch} />}
+        {activeTab === 'Goleadores' && <section className="glass rounded-3xl p-5 shadow-card"><h2 className="mb-3 text-2xl font-black">Top goleadores</h2><ScorersTable rows={scorers} /></section>}
+
+
+        {selectedMatch && <ResultModal match={selectedMatch} participants={participants} onClose={() => setSelectedMatch(null)} onSaved={async () => { setSelectedMatch(null); await refresh(); await notify('Partido guardado y bracket actualizado.'); }} />}
       </div>
     </AdminLayout>
   );
 }
 
-function SummaryTab({ parts, matches, readyMatches, scorers, setActiveTab }) {
-  const finished = matches.filter((match) => match.status === 'finished');
-  return <div className="grid gap-5 lg:grid-cols-[1fr_360px]"><section className="glass rounded-3xl p-5 shadow-card"><h2 className="text-2xl font-black">Resumen operativo</h2><div className="mt-4 grid gap-3 md:grid-cols-4"><Stat label="Plantel" value={`${parts.length}/16`} /><Stat label="Pendientes" value={readyMatches.length} /><Stat label="Cerrados" value={finished.length} /><Stat label="Goleadores" value={scorers.length} /></div><div className="mt-5 flex flex-wrap gap-2"><button className="btn btn-primary" onClick={() => setActiveTab('Participantes')}>Agregar jugadores</button><button className="btn btn-ghost" onClick={() => setActiveTab('Resultados')}>Cargar resultados</button><button className="btn btn-ghost" onClick={() => setActiveTab('Links')}>Copiar links</button></div></section><section className="glass rounded-3xl p-5 shadow-card"><h2 className="font-black">Próximos partidos</h2><div className="mt-3 space-y-2">{readyMatches.slice(0, 4).map((match) => <MiniMatch key={match.id} match={match} />)}{readyMatches.length === 0 && <Empty text="No hay partidos listos todavía." />}</div></section></div>;
+function SummaryTab({ parts, readyMatches, finishedMatches, scorers, setActiveTab, isSetup }) {
+  return <div className="grid gap-5 lg:grid-cols-[1fr_360px]"><section className="glass rounded-3xl p-5 shadow-card"><h2 className="text-2xl font-black">{isSetup ? 'Setup' : 'Torneo en vivo'}</h2><div className="mt-4 grid gap-3 md:grid-cols-4"><Stat label="Jugadores" value={`${parts.length}/16`} /><Stat label="Listos" value={readyMatches.length} /><Stat label="Cerrados" value={finishedMatches.length} /><Stat label="Goleadores" value={scorers.length} /></div><div className="mt-5 flex flex-wrap gap-2"><button className="btn btn-primary" onClick={() => setActiveTab('Participantes')}>Jugadores de este torneo</button><button className="btn btn-ghost" onClick={() => setActiveTab('Sala')}>Sala / links</button><button className="btn btn-ghost" onClick={() => setActiveTab(isSetup ? 'Sorteo' : 'Resultados')}>{isSetup ? 'Ir al sorteo' : 'Cargar resultados'}</button></div></section><section className="glass rounded-3xl p-5 shadow-card"><h2 className="font-black">Modelo simple</h2><p className="mt-3 text-sm text-slate-300">El equipo pertenece a este torneo. Las estadísticas y puntos se acumulan en el jugador permanente.</p></section></div>;
 }
 
-function ParticipantsTab({ parts, available, selectedIds, setSelectedIds, addSelected, addAllAvailable, fillFirst16, refresh }) {
-  function toggle(id) { setSelectedIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]); }
-  return <div className="grid gap-5 lg:grid-cols-[1fr_420px]"><section className="glass rounded-3xl p-5 shadow-card"><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-2xl font-black">Jugadores disponibles</h2><p className="text-sm text-slate-400">Seleccioná hasta completar 16. Se usa currentTeam como equipo por defecto.</p></div><div className="flex flex-wrap gap-2"><button className="btn btn-ghost" onClick={addAllAvailable}>Agregar todos</button><button className="btn btn-ghost" onClick={fillFirst16}>Completar con primeros 16</button><button className="btn btn-primary" disabled={!selectedIds.length} onClick={addSelected}><ListChecks className="h-4 w-4" /> Agregar seleccionados</button></div></div><div className="mt-4 grid gap-2 md:grid-cols-2">{available.map((player) => <label key={player.id} className="flex cursor-pointer items-center gap-3 rounded-2xl bg-white/5 p-3"><input type="checkbox" checked={selectedIds.includes(player.id)} disabled={parts.length + selectedIds.length >= 16 && !selectedIds.includes(player.id)} onChange={() => toggle(player.id)} /><span><b>{player.nickname}</b><p className="text-xs text-slate-400">{player.currentTeam || 'Sin equipo'}</p></span></label>)}{available.length === 0 && <Empty text="No quedan jugadores disponibles." />}</div></section><section className="glass rounded-3xl p-5 shadow-card"><h2 className="text-2xl font-black"><UsersRound className="mr-2 inline h-5 w-5 text-electric" /> Plantel ({parts.length}/16)</h2><div className="mt-3 space-y-2">{parts.map((part) => <div key={part.id} className="flex items-center justify-between rounded-2xl bg-white/5 p-3"><span><b>{part.playerNickname}</b><p className="text-xs text-slate-400">{part.teamName}</p></span><button onClick={() => removeTournamentPlayer(part.id).then(refresh)}><Trash2 className="h-4 w-4 text-danger" /></button></div>)}{parts.length === 0 && <Empty text="Todavía no agregaste participantes." />}</div><div className="mt-4 text-xs text-slate-400">El sorteo se desbloquea únicamente al llegar a 16/16.</div></section></div>;
+function ParticipantsTab({ available, selectedPlayerId, setSelectedPlayerId, teamDraft, setTeamDraft, selectedPlayer, participants, teamEdits, setTeamEdits, habitualEdits, setHabitualEdits, addParticipant, saveParticipantTeam, refresh, matches }) {
+  const bracketStarted = matches.length > 0;
+  return <div className="grid gap-5 lg:grid-cols-[380px_1fr]"><section className="glass rounded-3xl p-5 shadow-card"><p className="text-xs font-black uppercase tracking-[.3em] text-electric">Agregar jugador</p><h2 className="mt-2 text-2xl font-black">Jugadores permanentes</h2><div className="mt-4 space-y-3"><select className="input" value={selectedPlayerId} disabled={participants.length >= 16 || bracketStarted} onChange={(e) => setSelectedPlayerId(e.target.value)}><option value="">Seleccionar jugador</option>{available.map((player) => <option key={player.id} value={player.id}>{player.nickname || player.name}</option>)}</select><input className="input" placeholder="Equipo para este torneo" value={teamDraft} disabled={!selectedPlayer || participants.length >= 16 || bracketStarted} onChange={(e) => setTeamDraft(e.target.value)} /><button className="btn btn-primary w-full" disabled={!selectedPlayer || participants.length >= 16 || bracketStarted} onClick={addParticipant}><UsersRound className="h-4 w-4" /> Agregar</button></div></section><section className="glass rounded-3xl p-5 shadow-card"><h2 className="text-2xl font-black">Jugadores de este torneo ({participants.length}/16)</h2><div className="mt-4 space-y-2">{participants.map((part) => <div key={part.id} className="grid gap-2 rounded-3xl bg-white/5 p-3 md:grid-cols-[1fr_1.3fr_auto]"><b className="self-center">{part.playerNickname || part.playerName}</b><div><input className="input" value={teamEdits[part.id] ?? ''} onChange={(e) => setTeamEdits((current) => ({ ...current, [part.id]: e.target.value }))} placeholder="Equipo" /><label className="mt-2 flex items-center gap-2 text-xs text-slate-400"><input type="checkbox" checked={Boolean(habitualEdits[part.id])} onChange={(e) => setHabitualEdits((current) => ({ ...current, [part.id]: e.target.checked }))} /> Guardar también como equipo habitual</label></div><div className="flex flex-wrap gap-2 self-start"><button className="btn btn-ghost text-xs" onClick={() => saveParticipantTeam(part)}><Save className="h-3 w-3" /> Guardar equipo</button><button className="btn btn-ghost text-xs" disabled={bracketStarted} onClick={() => removeTournamentPlayer(part.id).then(refresh)}><Trash2 className="h-3 w-3 text-danger" /> Quitar</button></div></div>)}{participants.length === 0 && <Empty text="Agregá jugadores para preparar el torneo." />}</div></section></div>;
 }
 
-function ResultsTab({ matches, scoreDrafts, setDraft, closeQuickMatch, openModal }) {
-  return <section className="glass rounded-3xl p-5 shadow-card"><div className="flex items-center justify-between gap-3"><div><h2 className="text-2xl font-black">Resultados rápidos</h2><p className="text-sm text-slate-400">Cargá score y cerrá. El modal queda para agregar goleadores.</p></div></div><div className="mt-4 grid gap-3 xl:grid-cols-2">{matches.map((match) => <div key={match.id} className="rounded-3xl bg-white/5 p-4"><p className="text-xs font-black uppercase tracking-[.2em] text-electric">{roundLabels[match.round]}</p><div className="mt-3 grid grid-cols-[1fr_80px] items-center gap-3"><span><b>{match.playerAName || 'Jugador A'}</b><p className="text-xs text-slate-400">{match.teamA || 'Equipo pendiente'}</p></span><input className="input text-center text-2xl font-black" type="number" min="0" value={scoreDrafts[match.id]?.scoreA ?? ''} onChange={(e) => setDraft(match.id, 'scoreA', e.target.value)} /></div><div className="my-3 h-px bg-white/10" /><div className="grid grid-cols-[1fr_80px] items-center gap-3"><span><b>{match.playerBName || 'Jugador B'}</b><p className="text-xs text-slate-400">{match.teamB || 'Equipo pendiente'}</p></span><input className="input text-center text-2xl font-black" type="number" min="0" value={scoreDrafts[match.id]?.scoreB ?? ''} onChange={(e) => setDraft(match.id, 'scoreB', e.target.value)} /></div><div className="mt-4 grid gap-2 sm:grid-cols-3"><button className="btn btn-ghost text-xs" onClick={() => setDraft(match.id, 'saved', true)}><Save className="h-3 w-3" /> Guardar resultado</button><button className="btn btn-ghost text-xs" onClick={() => openModal(match)}>Cargar goleadores</button><button className="btn btn-primary text-xs" onClick={() => closeQuickMatch(match)}>Cerrar partido</button></div></div>)}{matches.length === 0 && <Empty text="No hay partidos pendientes. Sorteá cruces o esperá clasificados." />}</div></section>;
+function LobbyTab({ tournament, participants, players, readyCount, copied, copyText, openLobby, markReady, resetPresence, handleDraw, canDraw, drawing }) {
+  const playerById = Object.fromEntries(players.map((player) => [player.id, player]));
+  const lobbyPlayers = participants.map((participant) => ({ ...participant, player: playerById[participant.playerId] })).filter((participant) => participant.player);
+  const progress = participants.length ? Math.round((readyCount / participants.length) * 100) : 0;
+  const allReady = participants.length === 16 && readyCount === 16;
+  const tournamentForLinks = tournament || { id: '', name: 'FIFA Viva Cup' };
+  return <section className="glass rounded-3xl p-5 shadow-card"><div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between"><div><p className="text-xs font-black uppercase tracking-[.3em] text-electric">Sala de espera</p><h2 className="mt-2 text-3xl font-black">Mandá los links y esperá a que todos entren</h2><p className="mt-2 text-sm text-slate-400">Cada jugador que abre su link aparece en verde.</p></div><div className="text-center"><b className="text-5xl text-electric">{readyCount}/{participants.length || 16}</b><p className="text-xs uppercase tracking-[.2em] text-slate-400">presentes</p></div></div><div className="mt-5 h-4 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-gradient-to-r from-winner to-electric" style={{ width: `${progress}%` }} /></div>{allReady && <div className="mt-5 rounded-3xl border border-winner/30 bg-winner/10 p-5 text-center text-2xl font-black text-winner">🎆 Todos están adentro</div>}<div className="mt-5 flex flex-wrap gap-2"><button className="btn btn-ghost" onClick={openLobby}>Abrir sala</button><button className="btn btn-primary" disabled={!lobbyPlayers.length} onClick={() => copyText(getAllJoinWhatsappMessages(lobbyPlayers.map((item) => item.player), lobbyPlayers, tournamentForLinks), 'all-join') }><Copy className="h-4 w-4" /> {copied === 'all-join' ? 'Copiado' : 'Copiar todos los mensajes'}</button><button className="btn btn-ghost" onClick={resetPresence}>Resetear presencia</button><button className="btn btn-primary" disabled={!canDraw || drawing} onClick={handleDraw}>{allReady ? 'Iniciar sorteo épico' : 'Iniciar sorteo igual'}</button></div><div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">{lobbyPlayers.map((participant) => <div key={participant.id} className={`rounded-3xl p-4 ${participant.ready ? 'bg-winner/15 ring-1 ring-winner/30' : 'bg-white/5'}`}><div className="flex items-start justify-between gap-2"><div><b>{participant.playerNickname || participant.playerName}</b><p className="text-sm text-slate-400">{participant.teamName || 'Equipo pendiente'}</p></div><span className={`rounded-full px-2 py-1 text-[10px] font-black ${participant.ready ? 'bg-winner/20 text-winner' : 'bg-white/10 text-slate-400'}`}>{participant.ready ? 'Listo' : 'Pendiente'}</span></div><p className="mt-2 text-xs text-slate-500">{participant.joinedAt?.seconds ? new Date(participant.joinedAt.seconds * 1000).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : 'Sin entrada todavía'}</p><div className="mt-3 grid gap-2"><button className="btn btn-ghost text-xs" onClick={() => copyText(getJoinLink(tournamentForLinks.id, participant.player.id, participant.player.accessToken), `join-${participant.playerId}`)}><LinkIcon className="h-3 w-3" /> {copied === `join-${participant.playerId}` ? 'Copiado' : 'Copiar link'}</button><button className="btn btn-ghost text-xs" onClick={() => copyText(getJoinWhatsappMessage(participant.player, participant, tournamentForLinks), `wa-${participant.playerId}`)}>Mensaje WhatsApp</button><button className="btn btn-ghost text-xs" onClick={() => markReady(participant, !participant.ready)}>{participant.ready ? 'Marcar pendiente' : 'Marcar presente manualmente'}</button></div></div>)}{!lobbyPlayers.length && <Empty text="Agregá jugadores para abrir la sala." />}</div></section>;
 }
 
-function LinksTab({ players, copied, copyText }) {
-  return <section className="glass rounded-3xl p-5 shadow-card"><div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between"><div><p className="text-xs font-black uppercase tracking-[.3em] text-electric">Links del torneo</p><h2 className="text-2xl font-black">Magic links para WhatsApp</h2></div><button className="btn btn-primary" onClick={() => copyText(allPlayerLinksMessage(players), 'all-tournament-links')}><Copy className="h-4 w-4" /> {copied === 'all-tournament-links' ? 'Copiado' : 'Copiar todos'}</button></div><div className="mt-4 grid gap-3 lg:grid-cols-2">{players.map((player) => <div key={player.id} className="rounded-3xl bg-white/5 p-4"><b>{player.nickname || player.name}</b><p className="text-sm text-slate-400">{player.currentTeam || 'Equipo pendiente'}</p><p className="mt-3 break-all rounded-2xl bg-black/20 p-3 text-[11px] text-slate-400">{magicLinkForPlayer(player)}</p><div className="mt-3 grid gap-2 sm:grid-cols-2"><button className="btn btn-ghost text-xs" onClick={() => copyText(magicLinkForPlayer(player), `tl-${player.id}`)}><LinkIcon className="h-3 w-3" /> {copied === `tl-${player.id}` ? 'Copiado' : 'Copiar link'}</button><button className="btn btn-ghost text-xs" onClick={() => copyText(whatsappMessageForPlayer(player), `tw-${player.id}`)}>{copied === `tw-${player.id}` ? 'Copiado' : 'Mensaje WhatsApp'}</button></div></div>)}{players.length === 0 && <Empty text="Agregá jugadores al torneo para ver sus links." />}</div></section>;
+function DrawTab({ canDraw, drawing, handleDraw, participants, matches, startTournament, tournament }) {
+  const [revealed, setRevealed] = useState(0);
+  const [countdown, setCountdown] = useState(null);
+  const sortedMatches = [...matches].sort((a, b) => a.kickoffOrder - b.kickoffOrder);
+  async function startReveal() {
+    setCountdown(3);
+    window.setTimeout(() => setCountdown(2), 700);
+    window.setTimeout(() => setCountdown(1), 1400);
+    window.setTimeout(() => { setCountdown(null); setRevealed(1); }, 2100);
+  }
+  const hasMatches = sortedMatches.length > 0;
+  const visibleCount = tournament?.status === 'active' ? sortedMatches.length : revealed;
+  return <section className="glass rounded-3xl p-5 text-center shadow-card"><p className="text-xs font-black uppercase tracking-[.3em] text-electric">Setup → Sala → Sorteo → Torneo en vivo</p><h2 className="mt-2 text-3xl font-black">Sorteo épico</h2>{!hasMatches && <><p className="mx-auto mt-2 max-w-xl text-sm text-slate-300">Cuando inicies, se crean 8 cruces únicos de octavos.</p><div className="mx-auto mt-5 grid max-w-3xl gap-2 md:grid-cols-4">{participants.map((participant) => <div key={participant.id} className="rounded-2xl bg-white/5 p-3 text-sm"><b>{participant.playerNickname}</b><p className="text-xs text-slate-400">{participant.teamName || 'Equipo pendiente'}</p></div>)}</div><button className="btn btn-primary mt-5" disabled={!canDraw || drawing} onClick={handleDraw}><Dices className="h-4 w-4" /> {drawing ? 'Sorteando...' : 'Iniciar sorteo épico'}</button>{!canDraw && <p className="mt-3 text-sm text-slate-400">Necesitás 16 jugadores y no tener bracket creado.</p>}</>}{hasMatches && <div className="mt-5"><p className="text-sm text-slate-400">{tournament?.status === 'draw' ? 'Sorteo en curso' : 'Cruces creados'}</p>{countdown && <div className="my-8 text-8xl font-black text-electric">{countdown}</div>}{!countdown && revealed === 0 && <button className="btn btn-primary" onClick={startReveal}>Revelar cruces</button>}<div className="mt-5 grid gap-3 md:grid-cols-2">{sortedMatches.slice(0, visibleCount).map((match) => <div key={match.id} className="rounded-3xl bg-white/5 p-5"><p className="text-xs font-black uppercase tracking-[.2em] text-electric">Octavos {match.matchNumber}</p><div className="mt-3 grid grid-cols-[1fr_auto_1fr] items-center gap-3"><span><b>{match.playerAName}</b><p className="text-xs text-slate-400">{match.teamA}</p></span><b className="text-2xl">VS</b><span><b>{match.playerBName}</b><p className="text-xs text-slate-400">{match.teamB}</p></span></div></div>)}</div><div className="mt-5 flex flex-wrap justify-center gap-2">{revealed > 0 && revealed < sortedMatches.length && <button className="btn btn-primary" onClick={() => setRevealed(revealed + 1)}>Siguiente cruce</button>}{revealed > 0 && revealed < sortedMatches.length && <button className="btn btn-ghost" onClick={() => setRevealed(sortedMatches.length)}>Saltar animación</button>}{visibleCount >= sortedMatches.length && tournament?.status !== 'active' && <button className="btn btn-primary" onClick={startTournament}>Arrancar torneo</button>}</div></div>}</section>;
 }
 
 function ResultModal({ match, participants, onClose, onSaved }) {
@@ -201,8 +275,8 @@ function ResultModal({ match, participants, onClose, onSaved }) {
       if (!editableMatch.playerAId || !editableMatch.playerBId) throw new Error('Definí los dos jugadores antes de cerrar el partido.');
       if (editableMatch.playerAId === editableMatch.playerBId) throw new Error('Un jugador no puede jugar contra sí mismo.');
       if (scoreA === '' || scoreB === '') throw new Error('Cargá ambos resultados.');
-      if (Number(scoreA) === Number(scoreB)) throw new Error('Debe haber un ganador. Si hubo penales, cargá el score final con ganador.');
-      if (match.round === 'FINAL' && !window.confirm('¿Cerrar la final y coronar campeón? Esta acción actualiza ranking anual y perfil de jugadores.')) return;
+      if (Number(scoreA) === Number(scoreB)) throw new Error('Debe haber un ganador.');
+      if (match.round === 'FINAL' && !window.confirm('¿Cerrar la final y coronar campeón? Esta acción guarda resultados por jugador.')) return;
       await saveManualCross();
       await closeMatch(editableMatch, Number(scoreA), Number(scoreB), goals);
       onSaved();
@@ -213,6 +287,5 @@ function ResultModal({ match, participants, onClose, onSaved }) {
 }
 
 function Stat({ label, value }) { return <div className="rounded-3xl bg-white/5 p-4 text-center"><p className="text-[10px] uppercase tracking-[.2em] text-slate-400">{label}</p><b className="mt-1 block text-3xl">{value}</b></div>; }
-function MiniMatch({ match }) { return <div className="rounded-2xl bg-white/5 p-3 text-sm"><b>{match.playerAName} vs {match.playerBName}</b><p className="text-xs text-slate-400">{roundLabels[match.round]}</p></div>; }
 function Empty({ text }) { return <p className="rounded-2xl border border-dashed border-white/10 p-4 text-sm text-slate-400">{text}</p>; }
-function ScoreBox({ name, value, setValue }) { return <label className="rounded-3xl bg-white/5 p-4 text-center"><span className="text-sm font-black">{name}</span><input className="mt-2 w-full bg-transparent text-center text-6xl font-black outline-none" type="number" min={0} value={value} onChange={(e) => setValue(Number(e.target.value))} /></label>; }
+function ScoreBox({ name, value, setValue }) { return <label className="rounded-3xl bg-white/5 p-4 text-center"><span className="text-sm font-black">{name}</span><input className="mt-2 w-full bg-transparent text-center text-6xl font-black outline-none" type="number" min={0} value={value} onChange={(e) => setValue(e.target.value)} /></label>; }
