@@ -4,7 +4,7 @@ import { Link, useParams } from 'react-router-dom';
 import { BracketView } from '../components/BracketView';
 import { ScorersTable } from '../components/ScorersTable';
 import { roundLabels } from '../lib/bracket';
-import { buildScorers, getPlayer, getTournament, listFeed, listMatches } from '../lib/firestore';
+import { buildRanking, buildScorers, getPlayer, getTournament, listFeed, listMatches } from '../lib/firestore';
 
 export function TournamentPage() {
   const { id = '' } = useParams();
@@ -12,6 +12,7 @@ export function TournamentPage() {
   const [tournament, setTournament] = useState(null);
   const [matches, setMatches] = useState([]);
   const [scorers, setScorers] = useState([]);
+  const [ranking, setRanking] = useState([]);
   const [feed, setFeed] = useState([]);
   const [champion, setChampion] = useState('');
 
@@ -20,9 +21,11 @@ export function TournamentPage() {
     void (async () => {
       const t = await getTournament(id);
       setTournament(t);
-      setMatches(await listMatches(id));
-      setScorers(await buildScorers(id));
-      setFeed(await listFeed(id));
+      const [matchRows, scorerRows, feedRows, rankingRows] = await Promise.all([listMatches(id), buildScorers(id), listFeed(id), t ? buildRanking(t.season) : Promise.resolve([])]);
+      setMatches(matchRows);
+      setScorers(scorerRows);
+      setFeed(feedRows);
+      setRanking(rankingRows.slice(0, 5));
       if (t?.championPlayerId) setChampion((await getPlayer(t.championPlayerId))?.nickname ?? 'Campeón');
     })().finally(() => setLoading(false));
   }, [id]);
@@ -50,6 +53,7 @@ export function TournamentPage() {
           <Panel title="Próximos partidos">{pending.length ? pending.map((match) => <MiniMatch key={match.id} match={match} />) : <Empty text="No hay partidos pendientes listos." />}</Panel>
           <Panel title="Últimos resultados">{latest.length ? latest.map((match) => <MiniMatch key={match.id} match={match} result />) : <Empty text="Todavía no hay resultados." />}</Panel>
           <Panel title="Goleadores"><ScorersTable rows={scorers.slice(0, 5)} /></Panel>
+          <Panel title="Ranking corto">{ranking.length ? ranking.map((row, index) => <div key={row.playerId} className="flex items-center justify-between rounded-2xl bg-white/5 p-3 text-sm"><span>#{index + 1} {row.nickname}</span><b className="text-electric">{row.points} pts</b></div>) : <Empty text="Todavía no hay puntos en el ranking." />}</Panel>
           <Panel title="Feed narrativo">{feed.length ? feed.map((event) => <p key={event.id} className="rounded-2xl bg-white/5 p-3 text-sm text-slate-200">{event.text}</p>) : <Empty text="La historia empieza con el sorteo." />}</Panel>
         </aside>
       </div>

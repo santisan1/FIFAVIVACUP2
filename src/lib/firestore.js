@@ -32,7 +32,7 @@ function safeStats(stats = {}) {
   return { ...emptyStats(), ...stats, annualPoints: stats.annualPoints ?? {} };
 }
 
-export function playerMagicLink(player, origin = window.location.origin) {
+export function playerMagicLink(player, origin = import.meta.env.VITE_PUBLIC_APP_URL || import.meta.env.PUBLIC_APP_URL || window.location.origin) {
   return `${origin}/player/${player.id}?token=${player.accessToken}`;
 }
 
@@ -81,6 +81,13 @@ export async function getTournament(id) {
   return snap.exists() ? withId(snap) : null;
 }
 
+function timestampValue(value) {
+  if (!value) return 0;
+  if (typeof value.seconds === 'number') return value.seconds;
+  if (value instanceof Date) return Math.floor(value.getTime() / 1000);
+  return 0;
+}
+
 export async function getActiveTournament() {
   const snap = await getDocs(query(collection(db, 'tournaments'), where('status', 'in', ['draft', 'draw', 'active']), orderBy('createdAt', 'desc'), limit(1)));
   return snap.docs[0] ? withId(snap.docs[0]) : null;
@@ -119,6 +126,30 @@ export async function addTournamentPlayer(tournamentId, player, teamName) {
     finalPosition: null,
     createdAt: serverTimestamp(),
   });
+}
+
+
+export async function addTournamentPlayers(tournamentId, selectedPlayers) {
+  const existing = await listTournamentPlayers(tournamentId);
+  const existingIds = new Set(existing.map((item) => item.playerId));
+  const availableSlots = Math.max(0, 16 - existing.length);
+  const playersToAdd = selectedPlayers.filter((player) => !existingIds.has(player.id)).slice(0, availableSlots);
+  const batch = writeBatch(db);
+  playersToAdd.forEach((player, index) => {
+    batch.set(doc(collection(db, 'tournamentPlayers')), {
+      tournamentId,
+      playerId: player.id,
+      playerName: player.name,
+      playerNickname: player.nickname,
+      teamName: player.currentTeam || '',
+      seed: existing.length + index + 1,
+      eliminated: false,
+      finalPosition: null,
+      createdAt: serverTimestamp(),
+    });
+  });
+  await batch.commit();
+  return playersToAdd.length;
 }
 
 export async function removeTournamentPlayer(id) {
