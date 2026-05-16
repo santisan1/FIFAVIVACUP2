@@ -1,0 +1,2 @@
+import { motion } from 'framer-motion';
+export function DrawReveal({ participants }) { return <div className="grid gap-3 md:grid-cols-2">{participants.map((participant, index) => <motion.div key={participant.id} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * .06 }} className="glass rounded-3xl p-4"><p className="text-xs text-electric">Carta #{index + 1}</p><p className="text-xl font-black">{participant.playerNickname}</p><p className="text-slate-400">{participant.teamName}</p></motion.div>)}</div>; }
