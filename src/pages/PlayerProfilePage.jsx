@@ -24,7 +24,7 @@ export function PlayerProfilePage() {
   const stats = player.statsGlobal;
   const badges = badgesForPlayer({ titles: stats.titles, runnerUps: stats.runnerUps, goalsFor: stats.goalsFor, goalsAgainst: stats.goalsAgainst, wins: stats.wins, losses: stats.losses });
   const mainBadge = status.isChampion ? '🏆 Campeón' : badges[0];
-  const annualPoints = stats.annualPoints?.[String(season)] ?? seasonPosition.row?.points ?? 0;
+  const annualPoints = seasonPosition.row?.points ?? stats.annualPoints?.[String(season)] ?? 0;
   const next = status.nextMatch;
   const last = status.lastMatch;
   const lost = status.lostMatch;
@@ -70,6 +70,7 @@ export function PlayerProfilePage() {
         <Panel title="Ranking anual"><div className="space-y-2">{seasonPosition.top5.map((row, index) => <div key={row.playerId} className={`flex items-center justify-between rounded-2xl p-3 text-sm ${row.playerId === player.id ? 'bg-electric/15' : 'bg-white/5'}`}><span>#{index + 1} {row.nickname}</span><b>{row.points} pts</b></div>)}{seasonPosition.pointsBehindAbove > 0 && <p className="text-xs text-slate-400">Estás a {seasonPosition.pointsBehindAbove} pts del de arriba.</p>}</div></Panel>
         <Panel title="Top goleadores del torneo"><ScorersTable rows={status.topScorers ?? []} highlightPlayerId={player.id} /></Panel>
         <Panel title="Torneos jugados">{results.length === 0 ? <Empty text="Todavía no hay torneos cerrados." /> : results.slice(0, 5).map((result) => <div key={result.id} className="flex items-center justify-between rounded-2xl bg-white/5 p-3 text-sm"><span>{result.tournamentName}<br /><small className="text-slate-400">{result.placement}</small></span><b className="text-electric">+{result.annualPoints}</b></div>)}</Panel>
+        <Panel title="Badges"><div className="flex flex-wrap gap-2">{badges.map((badge) => <span key={badge} className="rounded-full border border-electric/30 bg-electric/10 px-3 py-2 text-xs font-black text-electric">{badge}</span>)}</div></Panel>
       </section>
 
       <div className="flex flex-wrap gap-3">

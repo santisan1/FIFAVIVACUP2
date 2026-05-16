@@ -17,6 +17,7 @@ export default function App() {
         <Route path="/" element={<HomePage />} />
         <Route path="/tournament/:id" element={<TournamentPage />} />
         <Route path="/screen/:id" element={<LiveNightPage />} />
+        <Route path="/tv/:tournamentId" element={<LiveNightPage />} />
         <Route path="/bracket/:id" element={<NavigateToTournament />} />
         <Route path="/season/:year" element={<SeasonPage />} />
         <Route path="/player/:playerId" element={<PlayerProfilePage />} />
