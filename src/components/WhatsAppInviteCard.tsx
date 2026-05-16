@@ -1,5 +1,0 @@
-import type { Participant } from '../types';
-export function whatsappMessage(inviteUrl: string) { return `🔥 Bienvenido a la Viva Cup.\nEntrá a tu vestuario, mirá tus stats y seguí tu camino al título:\n${inviteUrl}\n\nNo compartas este link, es tu acceso personal.`; }
-export function WhatsAppInviteCard({ participant, inviteUrl }: { participant: Participant; inviteUrl?: string }) {
-  return <div className="glass rounded-3xl p-4"><div className="flex items-center justify-between gap-3"><div><p className="font-black">{participant.nickname}</p><p className="text-sm text-slate-400">{participant.teamName}</p></div><span className="rounded-full bg-white/5 px-3 py-1 text-xs">{participant.inviteStatus}</span></div>{inviteUrl && <div className="mt-3 space-y-2"><button className="btn btn-primary w-full" onClick={() => navigator.clipboard.writeText(whatsappMessage(inviteUrl))}>Copiar mensaje WhatsApp</button><button className="btn btn-ghost w-full" onClick={() => navigator.clipboard.writeText(inviteUrl)}>Copiar link</button></div>}</div>;
-}
