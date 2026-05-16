@@ -1,1 +1,0 @@
-export function ScorersTable() { return <div className="glass rounded-3xl p-5"><h3 className="font-black">Tabla de goleadores</h3><p className="mt-2 text-sm text-slate-400">Preparada para agregar goles opcionales por scorerName + dueño cuando se carguen resultados.</p></div>; }

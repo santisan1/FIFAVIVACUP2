@@ -1,7 +1,0 @@
-import { useEffect, useState } from 'react';
-import { AdminLayout } from '../components/AdminLayout';
-import { BracketView } from '../components/BracketView';
-import { DrawReveal } from '../components/DrawReveal';
-import { listMatches, listParticipants, listTournaments, runDraw } from '../lib/firestore';
-import type { Match, Participant, Tournament } from '../types';
-export function AdminDrawPage({ id }: { id: string }) { const [t, setT] = useState<Tournament | null>(null); const [parts, setParts] = useState<Participant[]>([]); const [matches, setMatches] = useState<Match[]>([]); const refresh = () => Promise.all([listTournaments(), listParticipants(id), listMatches(id)]).then(([ts, ps, ms]) => { setT(ts.find((x) => x.id === id) ?? null); setParts(ps); setMatches(ms); }); useEffect(() => { void refresh(); }, [id]); return <AdminLayout><div className="space-y-6"><div className="glass rounded-[2rem] p-6"><p className="text-xs font-black uppercase tracking-[.35em] text-electric">Sorteo épico</p><h1 className="mt-2 text-4xl font-black">Revelá los octavos</h1><p className="mt-2 text-slate-400">Necesita 16 participantes. Crea 8 partidos R16 sin repetir jugador.</p><button className="btn btn-primary mt-5" disabled={!t || parts.length !== 16 || matches.length > 0} onClick={() => t && runDraw(t, parts).then(refresh)}>Iniciar sorteo</button></div><DrawReveal participants={parts} /><BracketView matches={matches} /></div></AdminLayout>; }

@@ -1,15 +1,16 @@
 # FIFA Viva Cup
 
-Web app mobile-first para organizar una Viva Cup de EA FC/FIFA entre 16 amigos: home pública, perfil de jugador, admin práctico, sorteo de bracket, magic links por WhatsApp y base de stats/ranking.
+App web mobile-first para gestionar una Viva Cup de EA Sports FC/FIFA entre amigos: torneos knockout de 16 jugadores, sorteo épico, bracket público, carga rápida de resultados, goleadores, ranking anual y perfiles por magic link.
 
 ## Stack
 
-- React + Vite + TypeScript
-- Tailwind CSS
+- React + Vite en JavaScript/JSX normal (sin TypeScript)
+- Firebase Firestore y Firebase Storage opcional
+- Tailwind CSS v3
 - Framer Motion
-- Firebase Auth, Firestore y Storage opcional
-- Vercel Serverless Functions en `/api`
-- Firebase Admin SDK solo en backend
+- React Router
+- Recharts opcional para estadísticas
+- Deploy pensado para Vercel
 
 ## Instalación
 
@@ -27,63 +28,106 @@ npm run lint
 
 ## Firebase frontend
 
-La config web pública está en `src/lib/firebase.ts`. Esa config puede vivir en frontend; no agregues private keys ni service accounts en `src/`.
+La config web pública está en `src/lib/firebase.js`. Esa config puede vivir en frontend; no agregues private keys ni service accounts en `src/`.
 
-## Variables de entorno backend
+## Variables de entorno para Vercel
 
-Copiá `.env.example` a `.env.local` para desarrollo con Vercel o configurá estas variables en Vercel:
+Obligatoria/recomendada para el admin simple:
 
-- `FIREBASE_PROJECT_ID`
-- `FIREBASE_CLIENT_EMAIL`
-- `FIREBASE_PRIVATE_KEY`
-- `INVITE_TOKEN_PEPPER`
-- `PUBLIC_APP_URL` opcional
-
-Si `FIREBASE_PRIVATE_KEY` viene con `\n`, las funciones serverless lo normalizan antes de inicializar Firebase Admin.
-
-## Firestore rules
-
-Publicá `firestore.rules` en Firebase. El modelo deja lectura pública de torneos/participantes/matches/goals/badges y bloquea writes sensibles salvo admin. Los invites solo son legibles/escribibles por admin porque contienen `tokenHash`.
-
-## Crear primer admin
-
-1. Creá un documento manual en Firestore: `users/{uid}`.
-2. Usá el UID del usuario Firebase Auth que quieras hacer admin.
-3. Datos mínimos:
-
-```json
-{
-  "id": "UID",
-  "name": "Admin",
-  "nickname": "Admin",
-  "phone": "",
-  "role": "admin",
-  "status": "active"
-}
+```bash
+VITE_ADMIN_PASSCODE=un-passcode-privado
 ```
 
-Para el primer acceso podés crear temporalmente un custom token desde una consola segura o cargar un invite manual desde backend. No expongas credenciales Admin SDK en frontend.
+Opcionales si vas a usar los endpoints serverless de invites en `/api`:
+
+```bash
+FIREBASE_PROJECT_ID=fifavivacup
+FIREBASE_CLIENT_EMAIL=firebase-adminsdk-xxxxx@fifavivacup.iam.gserviceaccount.com
+FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+INVITE_TOKEN_PEPPER=un-string-largo-random-y-secreto
+PUBLIC_APP_URL=https://tu-dominio.vercel.app
+```
+
+## Acceso admin simple
+
+El admin usa un passcode local para evitar login pesado durante la juntada.
+
+- Variable opcional: `VITE_ADMIN_PASSCODE`
+- Valor local por defecto: `viva2026`
+- Firestore rules quedan en modo MVP abierto porque Firestore no puede validar un passcode guardado localmente. Para producción pública, reemplazar por Firebase Auth/Admin Claims.
+
+## Magic links de jugadores
+
+Cada jugador creado en `/admin/players` guarda un `accessToken` en `players/{playerId}`. El admin puede copiar el link:
+
+```text
+/player/:playerId?token=ACCESS_TOKEN
+```
+
+Desde ese perfil el jugador ve stats globales, puntos del año, torneos jugados, historial reciente y badges automáticos. Si regenerás el token, los links viejos dejan de funcionar.
+
+## Datos anuales y ranking
+
+Al cerrar partidos y torneos se guardan datos en:
+
+- `players.statsGlobal.annualPoints.{year}` para ranking rápido.
+- `seasonPointEvents` para auditar puntos por victoria, posición final, goleador y defensa.
+- `tournamentResults` para ver puntos por torneo y perfil individual.
+
+Puntaje implementado:
+
+- Campeón: +10
+- Subcampeón: +7
+- Semifinalista: +5
+- Cuartos: +3
+- Octavos: +1
+- Victoria: +2
+- Goleador del torneo: +2
+- Menos goles recibidos: +1
 
 ## Flujo MVP
 
-1. Entrar a `/admin/players` e importar los 16 jugadores sample o crear jugadores manuales.
-2. Entrar a `/admin/tournaments` y crear `Viva Cup I` para `2026-05-23`.
-3. Abrir el torneo y agregar participantes hasta 16.
-4. Ir a `/admin/tournaments/:id/invites` y generar/copiar mensajes de WhatsApp.
-5. Cada jugador abre `/invite/:token`, el backend canjea el invite por Firebase Custom Token y redirige a `/me`.
-6. Ir a `/admin/tournaments/:id/draw` y ejecutar sorteo de octavos.
-7. Compartir `/live` o `/bracket/:tournamentId` para ver bracket público.
+1. Entrar a `/admin/players` y crear jugadores.
+2. Copiar magic links de cada jugador si querés compartir perfil individual.
+3. Entrar a `/admin` y crear el torneo de la noche.
+4. Abrir `/admin/tournament/:id` y agregar exactamente 16 jugadores.
+5. Ejecutar el sorteo; se crean automáticamente los 8 partidos de octavos.
+6. Tocar un partido del bracket, cargar resultado y goleadores en segundos.
+7. Al cerrar un partido, el ganador avanza automáticamente.
+8. Al cerrar la final, se corona campeón, se actualiza el torneo y el ranking anual.
+9. Compartir `/tournament/:id`, `/season/:year` o `/player/:playerId?token=xxx`.
 
 ## Deploy en Vercel
 
 1. Importá el repo en Vercel.
-2. Configurá las variables de entorno del backend.
-3. Deploy normal con build command `npm run build`.
-4. Asegurate de publicar las reglas Firestore.
+2. Configurá `VITE_ADMIN_PASSCODE`.
+3. Configurá las variables serverless si vas a usar `/api`.
+4. Deploy normal con build command `npm run build`.
+5. Publicá `firestore.rules` en Firebase.
 
-## Seguridad de invites
+## Notas
 
-- El token real solo se devuelve al admin al generar el invite.
-- En Firestore se guarda `tokenHash = SHA-256(token + pepper)`.
-- `usedAt` no bloquea reingreso: se registran `openedAt` y `lastUsedAt`.
-- `revoked` y `expiresAt` se validan en `/api/auth/exchange-invite`.
+- El proyecto está completamente en `.js` / `.jsx`.
+- No hay OCR como dependencia principal; `matches.imageUrl` queda preparado para una foto del resultado en el futuro.
+- La carga oficial del resultado es manual y rápida.
+
+## Modos de experiencia
+
+- **Admin Mode** (`/admin`): crear torneo/jugadores, copiar magic links, regenerar tokens, agregar 16 jugadores, sortear, editar cruces y cargar resultados/goleadores en menos de 20 segundos.
+- **Player Magic Link Mode** (`/player/:playerId?token=xxx`): dashboard personal premium sin login ni herramientas admin. Valida solo que el token coincida con `players.accessToken`.
+- **Public Tournament Mode** (`/tournament/:id`): transmisión pública con bracket, pendientes, últimos resultados, goleadores, feed y campeón.
+- **Live Night Mode** (`/screen/:id`): vista visual para TV/proyector sin edición.
+
+## Seed demo data
+
+En `/admin` hay un botón **Seed demo data** para desarrollo. Crea:
+
+- 16 jugadores fake con equipos.
+- Un torneo demo de la temporada actual.
+- Los 16 jugadores agregados al torneo.
+- Bracket sorteado.
+- Algunos partidos cerrados.
+- Goles cargados.
+- Ranking anual parcial por victorias.
+
+Usalo para validar el flujo principal completo antes de cargar datos reales.
