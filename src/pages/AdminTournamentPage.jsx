@@ -5,8 +5,8 @@ import { AdminLayout } from '../components/AdminLayout';
 import { BracketView } from '../components/BracketView';
 import { ScorersTable } from '../components/ScorersTable';
 import { roundLabels } from '../lib/bracket';
-import { addTournamentPlayer, buildScorers, closeMatch, getTournament, listMatches, listPlayers, listTournamentPlayers, openTournamentLobby, removeTournamentPlayer, resetTournamentPresence, runDraw, setTournamentPlayerReady, updateMatchPlayers, updateTournamentPlayerTeam, updateTournamentStatus } from '../lib/firestore';
-import { getAllJoinWhatsappMessages, getJoinLink, getJoinWhatsappMessage } from '../lib/magicLinks';
+import { addTournamentPlayer, buildScorers, closeMatch, getTournament, listMatches, listPlayers, listTournamentPlayers, removeTournamentPlayer, runDraw, updateMatchPlayers, updateTournamentPlayerTeam } from '../lib/firestore';
+import { allPlayerLinksMessage, magicLinkForPlayer, whatsappMessageForPlayer } from '../lib/magicLinks';
 
 const setupTabs = ['Resumen', 'Participantes', 'Sala', 'Sorteo'];
 const liveTabs = ['Resumen', 'Sala', 'Sorteo', 'Bracket', 'Resultados', 'Goleadores'];
@@ -38,7 +38,6 @@ export function AdminTournamentPage() {
   const [selectedPlayerId, setSelectedPlayerId] = useState('');
   const [teamDraft, setTeamDraft] = useState('');
   const [teamEdits, setTeamEdits] = useState({});
-  const [habitualEdits, setHabitualEdits] = useState({});
   const [scoreDrafts, setScoreDrafts] = useState({});
   const [drawing, setDrawing] = useState(false);
   const [error, setError] = useState('');
@@ -60,24 +59,15 @@ export function AdminTournamentPage() {
 
   const playerById = useMemo(() => Object.fromEntries(players.map((player) => [player.id, player])), [players]);
   const participants = useMemo(() => parts.map((part) => ({ ...part, player: playerById[part.playerId] })).filter((part) => part.player), [parts, playerById]);
-  const participantIds = useMemo(() => new Set(parts.map((part) => part.playerId)), [parts]);
-  const available = useMemo(() => uniquePlayersForPicker(players).filter((player) => !participantIds.has(player.id)), [players, participantIds]);
+  const available = useMemo(() => players.filter((player) => !parts.some((part) => part.playerId === player.id)), [players, parts]);
   const selectedPlayer = playerById[selectedPlayerId];
   const readyMatches = matches.filter((match) => match.status !== 'finished' && match.playerAId && match.playerBId);
   const finishedMatches = matches.filter((match) => match.status === 'finished');
-  const readyCount = parts.filter((part) => part.ready).length;
   const canDraw = parts.length === 16 && matches.length === 0;
-  const isSetup = !matches.length && ['draft', 'lobby'].includes(tournament?.status);
-  const tabs = isSetup ? setupTabs : liveTabs;
 
   useEffect(() => {
     setTeamDraft(selectedPlayer?.currentTeam || '');
   }, [selectedPlayer]);
-
-  useEffect(() => {
-    if (!isSetup && !liveTabs.includes(activeTab)) setActiveTab('Resultados');
-    if (isSetup && !setupTabs.includes(activeTab)) setActiveTab('Participantes');
-  }, [activeTab, isSetup]);
 
   async function notify(text) {
     setToast(text);
@@ -93,24 +83,23 @@ export function AdminTournamentPage() {
   async function handleAddParticipant() {
     try {
       setError('');
-      if (!selectedPlayer) throw new Error('Elegí un jugador para agregarlo al torneo.');
-      if (participantIds.has(selectedPlayer.id)) throw new Error('Este jugador ya está en este torneo.');
+      if (!selectedPlayer) throw new Error('Elegí un jugador permanente para agregarlo al torneo.');
       await addTournamentPlayer(id, selectedPlayer, teamDraft || selectedPlayer.currentTeam || '');
       setSelectedPlayerId('');
       setTeamDraft('');
       await refresh();
-      await notify('Jugador agregado al torneo.');
+      await notify('Participante agregado. Confirmá su equipo del torneo antes de sortear.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo agregar el jugador.');
+      setError(err instanceof Error ? err.message : 'No se pudo agregar el participante.');
     }
   }
 
-  async function saveParticipantTeam(participant) {
+  async function saveParticipantTeam(participant, makeDefault = false) {
     try {
       setError('');
-      await updateTournamentPlayerTeam(participant, teamEdits[participant.id] || '', { makeDefault: Boolean(habitualEdits[participant.id]) });
+      await updateTournamentPlayerTeam(participant, teamEdits[participant.id] || '', { makeDefault });
       await refresh();
-      await notify('Equipo guardado.');
+      await notify(makeDefault ? 'Equipo del torneo guardado y usado como default del jugador.' : 'Equipo del torneo guardado sin cambiar el perfil global.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo guardar el equipo.');
     }
@@ -121,7 +110,6 @@ export function AdminTournamentPage() {
       setError('');
       if (readyCount < parts.length && !window.confirm(`Faltan ${parts.length - readyCount} jugadores por entrar. ¿Querés sortear igual?`)) return;
       setDrawing(true);
-      await new Promise((resolve) => setTimeout(resolve, 900));
       await runDraw(id);
       await refresh();
       setActiveTab('Sorteo');
@@ -144,38 +132,13 @@ export function AdminTournamentPage() {
       if (!match.playerAId || !match.playerBId) throw new Error('No podés cerrar un partido sin ambos jugadores.');
       if (draft.scoreA === '' || draft.scoreB === '') throw new Error('Cargá ambos scores.');
       if (Number(draft.scoreA) === Number(draft.scoreB)) throw new Error('No se permiten empates en eliminación directa.');
-      if (match.round === 'FINAL' && !window.confirm('¿Cerrar la final y coronar campeón?')) return;
+      if (match.round === 'FINAL' && !window.confirm('¿Cerrar la final y coronar campeón? Esto guarda tournamentResults por playerId y actualiza el ranking anual.')) return;
       await closeMatch(match, Number(draft.scoreA), Number(draft.scoreB), []);
       await refresh();
-      await notify('Resultado cerrado. Ganador avanzado.');
+      await notify('Resultado cerrado. El ranking anual acumula por playerId.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo cerrar el partido.');
     }
-  }
-
-
-  async function handleOpenLobby() {
-    await openTournamentLobby(id);
-    await refresh();
-    await notify('Sala abierta. Mandá los links a los jugadores.');
-  }
-
-  async function markReady(participant, ready = true) {
-    await setTournamentPlayerReady(participant, ready);
-    await refresh();
-  }
-
-  async function resetPresence() {
-    if (!window.confirm('¿Resetear la presencia de todos los jugadores?')) return;
-    await resetTournamentPresence(id);
-    await refresh();
-  }
-
-  async function startTournament() {
-    await updateTournamentStatus(id, 'active');
-    await refresh();
-    setActiveTab('Resultados');
-    await notify('Torneo en vivo. Ya podés cargar resultados.');
   }
 
   return (
@@ -186,33 +149,31 @@ export function AdminTournamentPage() {
             <div>
               <p className="text-xs font-black uppercase tracking-[.3em] text-electric">{isSetup ? 'Setup del torneo' : 'Torneo en vivo'}</p>
               <h1 className="text-4xl font-black">{tournament?.name ?? 'Torneo'}</h1>
-              <p className="mt-2 text-sm text-slate-300">{isSetup ? 'Elegí jugadores, confirmá equipos y copiá magic links antes del sorteo.' : 'Bracket, resultados, goleadores y modo TV para la juntada.'}</p>
-              <p className="mt-1 text-sm text-slate-400">{parts.length}/16 jugadores · {readyCount}/{parts.length || 16} presentes · {tournament?.status}</p>
+              <p className="mt-2 text-sm text-slate-300">Flujo MVP: crear jugadores permanentes → agregar 16 participantes → confirmar equipo en este torneo → copiar magic links → sortear → cargar resultados → ranking anual.</p>
+              <p className="mt-1 text-sm text-slate-400">{parts.length}/16 participantes · estado {tournament?.status}</p>
             </div>
             <div className="flex flex-wrap gap-2">
               <Link className="btn btn-ghost" to={`/tournament/${id}`}>Ver torneo</Link>
               <Link className="btn btn-ghost" to={`/tv/${id}`}><Monitor className="h-4 w-4" /> Modo TV</Link>
-              <button disabled={!canDraw || drawing} className="btn btn-primary disabled:opacity-40" onClick={handleDraw}><Dices className="h-4 w-4" /> Iniciar sorteo</button>
+              <button disabled={!canDraw || drawing} className="btn btn-primary disabled:opacity-40" onClick={handleDraw}><Dices className="h-4 w-4" /> Sortear</button>
             </div>
           </div>
           <div className="mt-4 h-3 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-gradient-to-r from-electric to-violet" style={{ width: `${Math.min(100, (parts.length / 16) * 100)}%` }} /></div>
           {error && <p className="mt-4 rounded-2xl bg-danger/10 p-3 text-sm text-danger">{error}</p>}
           {toast && <p className="mt-4 rounded-2xl bg-winner/10 p-3 text-sm font-black text-winner">{toast}</p>}
-          {drawing && <p className="mt-4 rounded-2xl bg-electric/10 p-3 text-sm font-black text-electric">🎲 Revelando cruces...</p>}
+          {drawing && <p className="mt-4 rounded-2xl bg-electric/10 p-3 text-sm font-black text-electric">🎲 La arena decide los cruces...</p>}
         </section>
 
         <nav className="flex flex-wrap gap-2">
           {tabs.map((tab) => <button key={tab} className={`btn ${activeTab === tab ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setActiveTab(tab)}>{tab}</button>)}
         </nav>
 
-        {activeTab === 'Resumen' && <SummaryTab parts={parts} readyMatches={readyMatches} finishedMatches={finishedMatches} scorers={scorers} setActiveTab={setActiveTab} isSetup={isSetup} />}
-        {activeTab === 'Participantes' && <ParticipantsTab available={available} selectedPlayerId={selectedPlayerId} setSelectedPlayerId={setSelectedPlayerId} teamDraft={teamDraft} setTeamDraft={setTeamDraft} selectedPlayer={selectedPlayer} participants={participants} teamEdits={teamEdits} setTeamEdits={setTeamEdits} habitualEdits={habitualEdits} setHabitualEdits={setHabitualEdits} addParticipant={handleAddParticipant} saveParticipantTeam={saveParticipantTeam} refresh={refresh} matches={matches} />}
-        {activeTab === 'Sala' && <LobbyTab tournament={tournament} participants={participants} players={players} readyCount={readyCount} copied={copied} copyText={copyText} openLobby={handleOpenLobby} markReady={markReady} resetPresence={resetPresence} handleDraw={handleDraw} canDraw={canDraw} drawing={drawing} /> }
-        {activeTab === 'Sorteo' && <DrawTab canDraw={canDraw} drawing={drawing} handleDraw={handleDraw} participants={participants} matches={matches} startTournament={startTournament} tournament={tournament} />}
-        {activeTab === 'Bracket' && <section className="space-y-4"><BracketView matches={matches} onMatchClick={setSelectedMatch} admin />{matches.length === 0 && <Empty text="Confirmá 16 jugadores e iniciá el sorteo." />}</section>}
+        {activeTab === 'Resumen' && <SummaryTab parts={parts} readyMatches={readyMatches} finishedMatches={finishedMatches} scorers={scorers} setActiveTab={setActiveTab} />}
+        {activeTab === 'Participantes' && <ParticipantsTab available={available} selectedPlayerId={selectedPlayerId} setSelectedPlayerId={setSelectedPlayerId} teamDraft={teamDraft} setTeamDraft={setTeamDraft} selectedPlayer={selectedPlayer} participants={participants} teamEdits={teamEdits} setTeamEdits={setTeamEdits} addParticipant={handleAddParticipant} saveParticipantTeam={saveParticipantTeam} refresh={refresh} matches={matches} />}
+        {activeTab === 'Bracket' && <section className="space-y-4"><BracketView matches={matches} onMatchClick={setSelectedMatch} admin />{matches.length === 0 && <Empty text="Confirmá 16 participantes y sorteá para crear el bracket." />}</section>}
         {activeTab === 'Resultados' && <ResultsTab matches={matches} scoreDrafts={scoreDrafts} setDraft={setDraft} closeQuickMatch={closeQuickMatch} openModal={setSelectedMatch} />}
         {activeTab === 'Goleadores' && <section className="glass rounded-3xl p-5 shadow-card"><h2 className="mb-3 text-2xl font-black">Top goleadores</h2><ScorersTable rows={scorers} /></section>}
-
+        {activeTab === 'Links' && <LinksTab participants={participants} copied={copied} copyText={copyText} />}
 
         {selectedMatch && <ResultModal match={selectedMatch} participants={participants} onClose={() => setSelectedMatch(null)} onSaved={async () => { setSelectedMatch(null); await refresh(); await notify('Partido guardado y bracket actualizado.'); }} />}
       </div>
@@ -220,37 +181,22 @@ export function AdminTournamentPage() {
   );
 }
 
-function SummaryTab({ parts, readyMatches, finishedMatches, scorers, setActiveTab, isSetup }) {
-  return <div className="grid gap-5 lg:grid-cols-[1fr_360px]"><section className="glass rounded-3xl p-5 shadow-card"><h2 className="text-2xl font-black">{isSetup ? 'Setup' : 'Torneo en vivo'}</h2><div className="mt-4 grid gap-3 md:grid-cols-4"><Stat label="Jugadores" value={`${parts.length}/16`} /><Stat label="Listos" value={readyMatches.length} /><Stat label="Cerrados" value={finishedMatches.length} /><Stat label="Goleadores" value={scorers.length} /></div><div className="mt-5 flex flex-wrap gap-2"><button className="btn btn-primary" onClick={() => setActiveTab('Participantes')}>Jugadores de este torneo</button><button className="btn btn-ghost" onClick={() => setActiveTab('Sala')}>Sala / links</button><button className="btn btn-ghost" onClick={() => setActiveTab(isSetup ? 'Sorteo' : 'Resultados')}>{isSetup ? 'Ir al sorteo' : 'Cargar resultados'}</button></div></section><section className="glass rounded-3xl p-5 shadow-card"><h2 className="font-black">Modelo simple</h2><p className="mt-3 text-sm text-slate-300">El equipo pertenece a este torneo. Las estadísticas y puntos se acumulan en el jugador permanente.</p></section></div>;
+function SummaryTab({ parts, readyMatches, finishedMatches, scorers, setActiveTab }) {
+  return <div className="grid gap-5 lg:grid-cols-[1fr_360px]"><section className="glass rounded-3xl p-5 shadow-card"><h2 className="text-2xl font-black">Resumen operativo</h2><div className="mt-4 grid gap-3 md:grid-cols-4"><Stat label="Participantes" value={`${parts.length}/16`} /><Stat label="Listos" value={readyMatches.length} /><Stat label="Cerrados" value={finishedMatches.length} /><Stat label="Goleadores" value={scorers.length} /></div><div className="mt-5 flex flex-wrap gap-2"><button className="btn btn-primary" onClick={() => setActiveTab('Participantes')}>Participantes de este torneo</button><button className="btn btn-ghost" onClick={() => setActiveTab('Links')}>Magic links de perfiles</button><button className="btn btn-ghost" onClick={() => setActiveTab('Resultados')}>Cargar resultados</button></div></section><section className="glass rounded-3xl p-5 shadow-card"><h2 className="font-black">Regla anual</h2><p className="mt-3 text-sm text-slate-300">Los puntos se acumulan por playerId. El equipo se guarda en tournamentPlayers y tournamentResults solo como contexto del torneo.</p></section></div>;
 }
 
-function ParticipantsTab({ available, selectedPlayerId, setSelectedPlayerId, teamDraft, setTeamDraft, selectedPlayer, participants, teamEdits, setTeamEdits, habitualEdits, setHabitualEdits, addParticipant, saveParticipantTeam, refresh, matches }) {
+function ParticipantsTab({ available, selectedPlayerId, setSelectedPlayerId, teamDraft, setTeamDraft, selectedPlayer, participants, teamEdits, setTeamEdits, addParticipant, saveParticipantTeam, refresh, matches }) {
   const bracketStarted = matches.length > 0;
-  return <div className="grid gap-5 lg:grid-cols-[380px_1fr]"><section className="glass rounded-3xl p-5 shadow-card"><p className="text-xs font-black uppercase tracking-[.3em] text-electric">Agregar jugador</p><h2 className="mt-2 text-2xl font-black">Jugadores permanentes</h2><div className="mt-4 space-y-3"><select className="input" value={selectedPlayerId} disabled={participants.length >= 16 || bracketStarted} onChange={(e) => setSelectedPlayerId(e.target.value)}><option value="">Seleccionar jugador</option>{available.map((player) => <option key={player.id} value={player.id}>{player.nickname || player.name}</option>)}</select><input className="input" placeholder="Equipo para este torneo" value={teamDraft} disabled={!selectedPlayer || participants.length >= 16 || bracketStarted} onChange={(e) => setTeamDraft(e.target.value)} /><button className="btn btn-primary w-full" disabled={!selectedPlayer || participants.length >= 16 || bracketStarted} onClick={addParticipant}><UsersRound className="h-4 w-4" /> Agregar</button></div></section><section className="glass rounded-3xl p-5 shadow-card"><h2 className="text-2xl font-black">Jugadores de este torneo ({participants.length}/16)</h2><div className="mt-4 space-y-2">{participants.map((part) => <div key={part.id} className="grid gap-2 rounded-3xl bg-white/5 p-3 md:grid-cols-[1fr_1.3fr_auto]"><b className="self-center">{part.playerNickname || part.playerName}</b><div><input className="input" value={teamEdits[part.id] ?? ''} onChange={(e) => setTeamEdits((current) => ({ ...current, [part.id]: e.target.value }))} placeholder="Equipo" /><label className="mt-2 flex items-center gap-2 text-xs text-slate-400"><input type="checkbox" checked={Boolean(habitualEdits[part.id])} onChange={(e) => setHabitualEdits((current) => ({ ...current, [part.id]: e.target.checked }))} /> Guardar también como equipo habitual</label></div><div className="flex flex-wrap gap-2 self-start"><button className="btn btn-ghost text-xs" onClick={() => saveParticipantTeam(part)}><Save className="h-3 w-3" /> Guardar equipo</button><button className="btn btn-ghost text-xs" disabled={bracketStarted} onClick={() => removeTournamentPlayer(part.id).then(refresh)}><Trash2 className="h-3 w-3 text-danger" /> Quitar</button></div></div>)}{participants.length === 0 && <Empty text="Agregá jugadores para preparar el torneo." />}</div></section></div>;
+  return <div className="grid gap-5 lg:grid-cols-[420px_1fr]"><section className="glass rounded-3xl p-5 shadow-card"><p className="text-xs font-black uppercase tracking-[.3em] text-electric">Jugadores permanentes</p><h2 className="mt-2 text-2xl font-black">Agregar al torneo</h2><p className="mt-2 text-sm text-slate-400">Elegí un perfil histórico existente. No hay self-registration: el admin carga los 16 participantes.</p><div className="mt-4 space-y-3"><select className="input" value={selectedPlayerId} disabled={participants.length >= 16} onChange={(e) => setSelectedPlayerId(e.target.value)}><option value="">Seleccionar jugador permanente</option>{available.map((player) => <option key={player.id} value={player.id}>{player.nickname || player.name} · default: {player.currentTeam || 'sin equipo'}</option>)}</select><label className="block"><span className="text-xs font-black uppercase tracking-[.2em] text-slate-400">Equipo en este torneo</span><input className="input mt-2" placeholder="Equipo usado en este torneo" value={teamDraft} disabled={!selectedPlayer || participants.length >= 16} onChange={(e) => setTeamDraft(e.target.value)} /></label><button className="btn btn-primary w-full" disabled={!selectedPlayer || participants.length >= 16} onClick={addParticipant}><UsersRound className="h-4 w-4" /> Agregar participante</button></div></section><section className="glass rounded-3xl p-5 shadow-card"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-[.3em] text-electric">Participantes de este torneo</p><h2 className="mt-2 text-2xl font-black">Equipo en este torneo ({participants.length}/16)</h2></div>{bracketStarted && <span className="rounded-full bg-pending/10 px-3 py-1 text-xs font-black text-pending">Bracket ya sorteado</span>}</div><p className="mt-2 text-sm text-slate-400">Editar este campo cambia el equipo del participante en este torneo. Solo el botón default actualiza players.currentTeam.</p><div className="mt-4 space-y-3">{participants.map((part) => <div key={part.id} className="rounded-3xl bg-white/5 p-4"><div className="grid gap-3 xl:grid-cols-[1fr_1.2fr_auto]"><div><b>{part.playerNickname || part.playerName}</b><p className="text-xs text-slate-400">Default del jugador: {part.player?.currentTeam || 'sin equipo'} · seed {part.seed}</p></div><input className="input" value={teamEdits[part.id] ?? ''} onChange={(e) => setTeamEdits((current) => ({ ...current, [part.id]: e.target.value }))} placeholder="Equipo en este torneo" /><div className="flex flex-wrap gap-2"><button className="btn btn-ghost text-xs" onClick={() => saveParticipantTeam(part, false)}><Save className="h-3 w-3" /> Guardar torneo</button><button className="btn btn-ghost text-xs" onClick={() => saveParticipantTeam(part, true)}>Usar como default</button><button className="btn btn-ghost text-xs" disabled={bracketStarted} onClick={() => removeTournamentPlayer(part.id).then(refresh)}><Trash2 className="h-3 w-3 text-danger" /></button></div></div></div>)}{participants.length === 0 && <Empty text="Todavía no agregaste participantes." />}</div><p className="mt-4 text-xs text-slate-400">El sorteo se desbloquea al llegar a 16 participantes confirmados.</p></section></div>;
 }
 
-function LobbyTab({ tournament, participants, players, readyCount, copied, copyText, openLobby, markReady, resetPresence, handleDraw, canDraw, drawing }) {
-  const playerById = Object.fromEntries(players.map((player) => [player.id, player]));
-  const lobbyPlayers = participants.map((participant) => ({ ...participant, player: playerById[participant.playerId] })).filter((participant) => participant.player);
-  const progress = participants.length ? Math.round((readyCount / participants.length) * 100) : 0;
-  const allReady = participants.length === 16 && readyCount === 16;
-  const tournamentForLinks = tournament || { id: '', name: 'FIFA Viva Cup' };
-  return <section className="glass rounded-3xl p-5 shadow-card"><div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between"><div><p className="text-xs font-black uppercase tracking-[.3em] text-electric">Sala de espera</p><h2 className="mt-2 text-3xl font-black">Mandá los links y esperá a que todos entren</h2><p className="mt-2 text-sm text-slate-400">Cada jugador que abre su link aparece en verde.</p></div><div className="text-center"><b className="text-5xl text-electric">{readyCount}/{participants.length || 16}</b><p className="text-xs uppercase tracking-[.2em] text-slate-400">presentes</p></div></div><div className="mt-5 h-4 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-gradient-to-r from-winner to-electric" style={{ width: `${progress}%` }} /></div>{allReady && <div className="mt-5 rounded-3xl border border-winner/30 bg-winner/10 p-5 text-center text-2xl font-black text-winner">🎆 Todos están adentro</div>}<div className="mt-5 flex flex-wrap gap-2"><button className="btn btn-ghost" onClick={openLobby}>Abrir sala</button><button className="btn btn-primary" disabled={!lobbyPlayers.length} onClick={() => copyText(getAllJoinWhatsappMessages(lobbyPlayers.map((item) => item.player), lobbyPlayers, tournamentForLinks), 'all-join') }><Copy className="h-4 w-4" /> {copied === 'all-join' ? 'Copiado' : 'Copiar todos los mensajes'}</button><button className="btn btn-ghost" onClick={resetPresence}>Resetear presencia</button><button className="btn btn-primary" disabled={!canDraw || drawing} onClick={handleDraw}>{allReady ? 'Iniciar sorteo épico' : 'Iniciar sorteo igual'}</button></div><div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">{lobbyPlayers.map((participant) => <div key={participant.id} className={`rounded-3xl p-4 ${participant.ready ? 'bg-winner/15 ring-1 ring-winner/30' : 'bg-white/5'}`}><div className="flex items-start justify-between gap-2"><div><b>{participant.playerNickname || participant.playerName}</b><p className="text-sm text-slate-400">{participant.teamName || 'Equipo pendiente'}</p></div><span className={`rounded-full px-2 py-1 text-[10px] font-black ${participant.ready ? 'bg-winner/20 text-winner' : 'bg-white/10 text-slate-400'}`}>{participant.ready ? 'Listo' : 'Pendiente'}</span></div><p className="mt-2 text-xs text-slate-500">{participant.joinedAt?.seconds ? new Date(participant.joinedAt.seconds * 1000).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : 'Sin entrada todavía'}</p><div className="mt-3 grid gap-2"><button className="btn btn-ghost text-xs" onClick={() => copyText(getJoinLink(tournamentForLinks.id, participant.player.id, participant.player.accessToken), `join-${participant.playerId}`)}><LinkIcon className="h-3 w-3" /> {copied === `join-${participant.playerId}` ? 'Copiado' : 'Copiar link'}</button><button className="btn btn-ghost text-xs" onClick={() => copyText(getJoinWhatsappMessage(participant.player, participant, tournamentForLinks), `wa-${participant.playerId}`)}>Mensaje WhatsApp</button><button className="btn btn-ghost text-xs" onClick={() => markReady(participant, !participant.ready)}>{participant.ready ? 'Marcar pendiente' : 'Marcar presente manualmente'}</button></div></div>)}{!lobbyPlayers.length && <Empty text="Agregá jugadores para abrir la sala." />}</div></section>;
+function ResultsTab({ matches, scoreDrafts, setDraft, closeQuickMatch, openModal }) {
+  return <section className="glass rounded-3xl p-5 shadow-card"><h2 className="text-2xl font-black">Resultados rápidos</h2><p className="text-sm text-slate-400">Los jugadores no editan resultados desde el magic link. El admin cierra partidos y guarda puntos por playerId.</p><div className="mt-4 grid gap-3 xl:grid-cols-2">{matches.map((match) => <div key={match.id} className="rounded-3xl bg-white/5 p-4"><p className="text-xs font-black uppercase tracking-[.2em] text-electric">{roundLabels[match.round]}</p><div className="mt-3 grid grid-cols-[1fr_80px] items-center gap-3"><span><b>{match.playerAName || 'Jugador A'}</b><p className="text-xs text-slate-400">{match.teamA || 'Equipo pendiente'}</p></span><input className="input text-center text-2xl font-black" type="number" min="0" value={scoreDrafts[match.id]?.scoreA ?? ''} onChange={(e) => setDraft(match.id, 'scoreA', e.target.value)} /></div><div className="my-3 h-px bg-white/10" /><div className="grid grid-cols-[1fr_80px] items-center gap-3"><span><b>{match.playerBName || 'Jugador B'}</b><p className="text-xs text-slate-400">{match.teamB || 'Equipo pendiente'}</p></span><input className="input text-center text-2xl font-black" type="number" min="0" value={scoreDrafts[match.id]?.scoreB ?? ''} onChange={(e) => setDraft(match.id, 'scoreB', e.target.value)} /></div><div className="mt-4 grid gap-2 sm:grid-cols-2"><button className="btn btn-ghost text-xs" onClick={() => openModal(match)}>Cargar goleadores</button><button className="btn btn-primary text-xs" disabled={match.status === 'finished'} onClick={() => closeQuickMatch(match)}>{match.status === 'finished' ? 'Cerrado' : 'Cerrar partido'}</button></div></div>)}{matches.length === 0 && <Empty text="No hay partidos. Sorteá cruces después de confirmar los 16 equipos." />}</div></section>;
 }
 
-function DrawTab({ canDraw, drawing, handleDraw, participants, matches, startTournament, tournament }) {
-  const [revealed, setRevealed] = useState(0);
-  const [countdown, setCountdown] = useState(null);
-  const sortedMatches = [...matches].sort((a, b) => a.kickoffOrder - b.kickoffOrder);
-  async function startReveal() {
-    setCountdown(3);
-    window.setTimeout(() => setCountdown(2), 700);
-    window.setTimeout(() => setCountdown(1), 1400);
-    window.setTimeout(() => { setCountdown(null); setRevealed(1); }, 2100);
-  }
-  const hasMatches = sortedMatches.length > 0;
-  const visibleCount = tournament?.status === 'active' ? sortedMatches.length : revealed;
-  return <section className="glass rounded-3xl p-5 text-center shadow-card"><p className="text-xs font-black uppercase tracking-[.3em] text-electric">Setup → Sala → Sorteo → Torneo en vivo</p><h2 className="mt-2 text-3xl font-black">Sorteo épico</h2>{!hasMatches && <><p className="mx-auto mt-2 max-w-xl text-sm text-slate-300">Cuando inicies, se crean 8 cruces únicos de octavos.</p><div className="mx-auto mt-5 grid max-w-3xl gap-2 md:grid-cols-4">{participants.map((participant) => <div key={participant.id} className="rounded-2xl bg-white/5 p-3 text-sm"><b>{participant.playerNickname}</b><p className="text-xs text-slate-400">{participant.teamName || 'Equipo pendiente'}</p></div>)}</div><button className="btn btn-primary mt-5" disabled={!canDraw || drawing} onClick={handleDraw}><Dices className="h-4 w-4" /> {drawing ? 'Sorteando...' : 'Iniciar sorteo épico'}</button>{!canDraw && <p className="mt-3 text-sm text-slate-400">Necesitás 16 jugadores y no tener bracket creado.</p>}</>}{hasMatches && <div className="mt-5"><p className="text-sm text-slate-400">{tournament?.status === 'draw' ? 'Sorteo en curso' : 'Cruces creados'}</p>{countdown && <div className="my-8 text-8xl font-black text-electric">{countdown}</div>}{!countdown && revealed === 0 && <button className="btn btn-primary" onClick={startReveal}>Revelar cruces</button>}<div className="mt-5 grid gap-3 md:grid-cols-2">{sortedMatches.slice(0, visibleCount).map((match) => <div key={match.id} className="rounded-3xl bg-white/5 p-5"><p className="text-xs font-black uppercase tracking-[.2em] text-electric">Octavos {match.matchNumber}</p><div className="mt-3 grid grid-cols-[1fr_auto_1fr] items-center gap-3"><span><b>{match.playerAName}</b><p className="text-xs text-slate-400">{match.teamA}</p></span><b className="text-2xl">VS</b><span><b>{match.playerBName}</b><p className="text-xs text-slate-400">{match.teamB}</p></span></div></div>)}</div><div className="mt-5 flex flex-wrap justify-center gap-2">{revealed > 0 && revealed < sortedMatches.length && <button className="btn btn-primary" onClick={() => setRevealed(revealed + 1)}>Siguiente cruce</button>}{revealed > 0 && revealed < sortedMatches.length && <button className="btn btn-ghost" onClick={() => setRevealed(sortedMatches.length)}>Saltar animación</button>}{visibleCount >= sortedMatches.length && tournament?.status !== 'active' && <button className="btn btn-primary" onClick={startTournament}>Arrancar torneo</button>}</div></div>}</section>;
+function LinksTab({ participants, copied, copyText }) {
+  const players = participants.map((part) => ({ ...part.player, tournamentTeamName: part.teamName }));
+  return <section className="glass rounded-3xl p-5 shadow-card"><div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between"><div><p className="text-xs font-black uppercase tracking-[.3em] text-electric">Magic links de perfiles</p><h2 className="text-2xl font-black">Copiar links para participantes</h2><p className="text-sm text-slate-400">El link sigue siendo /player/:playerId?token=xxx. Al entrar verá su equipo del torneo activo.</p></div><button className="btn btn-primary" onClick={() => copyText(allPlayerLinksMessage(players), 'all-tournament-links')}><Copy className="h-4 w-4" /> {copied === 'all-tournament-links' ? 'Copiado' : 'Copiar todos'}</button></div><div className="mt-4 grid gap-3 lg:grid-cols-2">{players.map((player) => <div key={player.id} className="rounded-3xl bg-white/5 p-4"><b>{player.nickname || player.name}</b><p className="text-sm text-slate-400">Equipo en este torneo: {player.tournamentTeamName || 'pendiente'}</p><p className="mt-3 break-all rounded-2xl bg-black/20 p-3 text-[11px] text-slate-400">{magicLinkForPlayer(player)}</p><div className="mt-3 grid gap-2 sm:grid-cols-2"><button className="btn btn-ghost text-xs" onClick={() => copyText(magicLinkForPlayer(player), `tl-${player.id}`)}><LinkIcon className="h-3 w-3" /> {copied === `tl-${player.id}` ? 'Copiado' : 'Copiar link'}</button><button className="btn btn-ghost text-xs" onClick={() => copyText(whatsappMessageForPlayer(player), `tw-${player.id}`)}>{copied === `tw-${player.id}` ? 'Copiado' : 'Mensaje WhatsApp'}</button></div></div>)}{players.length === 0 && <Empty text="Agregá participantes al torneo para ver sus links." />}</div></section>;
 }
 
 function ResultModal({ match, participants, onClose, onSaved }) {
@@ -276,7 +222,7 @@ function ResultModal({ match, participants, onClose, onSaved }) {
       if (editableMatch.playerAId === editableMatch.playerBId) throw new Error('Un jugador no puede jugar contra sí mismo.');
       if (scoreA === '' || scoreB === '') throw new Error('Cargá ambos resultados.');
       if (Number(scoreA) === Number(scoreB)) throw new Error('Debe haber un ganador.');
-      if (match.round === 'FINAL' && !window.confirm('¿Cerrar la final y coronar campeón? Esta acción guarda resultados por jugador.')) return;
+      if (match.round === 'FINAL' && !window.confirm('¿Cerrar la final y coronar campeón? Esta acción guarda tournamentResults por playerId.')) return;
       await saveManualCross();
       await closeMatch(editableMatch, Number(scoreA), Number(scoreB), goals);
       onSaved();

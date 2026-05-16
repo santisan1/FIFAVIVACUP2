@@ -20,7 +20,7 @@ export function getAllJoinWhatsappMessages(players, tournamentPlayers, tournamen
 }
 
 export function whatsappMessageForPlayer(player) {
-  return `🏆 FIFA Viva Cup\n\n${player.nickname || player.name}, este es tu perfil histórico para seguir estadísticas y ranking:\n\n${magicLinkForPlayer(player)}`;
+  return `🏆 FIFA Viva Cup\n\n${player.nickname || player.name}, este es tu perfil para seguir el torneo:\n\n${magicLinkForPlayer(player)}\n\nAhí vas a ver tu perfil histórico, el equipo asignado por el admin para el torneo activo, próximo rival, estadísticas, ranking y cómo avanza la noche.`;
 }
 
 export function allPlayerLinksMessage(players) {
