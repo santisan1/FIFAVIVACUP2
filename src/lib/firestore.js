@@ -17,7 +17,7 @@ import {
 } from 'firebase/firestore';
 import { createInitialMatches, getWinner, nextSlot } from './bracket';
 import { db } from './firebase';
-import { resultNarrative } from './narratives';
+import { resultNarrative, badgesForPlayer } from './narratives';
 import { emptyStats } from '../types';
 
 const token = () => crypto.randomUUID().replaceAll('-', '');
@@ -82,7 +82,7 @@ export async function getTournament(id) {
 }
 
 export async function getActiveTournament() {
-  const snap = await getDocs(query(collection(db, 'tournaments'), where('status', 'in', ['draft', 'draw', 'active']), limit(1)));
+  const snap = await getDocs(query(collection(db, 'tournaments'), where('status', 'in', ['draft', 'draw', 'active']), orderBy('createdAt', 'desc'), limit(1)));
   return snap.docs[0] ? withId(snap.docs[0]) : null;
 }
 
@@ -151,7 +151,8 @@ export async function listFeed(tournamentId) {
 }
 
 export async function runDraw(tournamentId) {
-  const players = await listTournamentPlayers(tournamentId);
+  const [players, existingMatches] = await Promise.all([listTournamentPlayers(tournamentId), listMatches(tournamentId)]);
+  if (existingMatches.length > 0) throw new Error('Este torneo ya tiene bracket sorteado.');
   const matches = createInitialMatches(players, tournamentId);
   const batch = writeBatch(db);
   matches.forEach((match) => batch.set(doc(collection(db, 'matches')), { ...match, imageUrl: '', createdAt: serverTimestamp() }));
@@ -209,7 +210,7 @@ function addAnnualPointEvent(batch, { tournament, playerId, playerName, points, 
 
 export async function closeMatch(match, scoreA, scoreB, goals) {
   if (match.status === 'finished') throw new Error('Este partido ya estaba cerrado.');
-  const tournament = await getTournament(match.tournamentId);
+  const [tournament, participants] = await Promise.all([getTournament(match.tournamentId), listTournamentPlayers(match.tournamentId)]);
   if (!tournament) throw new Error('No existe el torneo.');
   const finalMatch = { ...match, scoreA, scoreB };
   const winner = getWinner(finalMatch);
@@ -232,6 +233,9 @@ export async function closeMatch(match, scoreA, scoreB, goals) {
   goals.filter((goal) => goal.scorerName && goal.quantity > 0).forEach((goal) => {
     batch.set(doc(collection(db, 'goals')), { tournamentId: match.tournamentId, matchId: match.id, ...goal, createdAt: serverTimestamp() });
   });
+
+  const loserParticipant = participants.find((participant) => participant.playerId === winner.loserId);
+  if (loserParticipant) batch.update(doc(db, 'tournamentPlayers', loserParticipant.id), { eliminated: true, eliminatedRound: match.round });
 
   const playerUpdates = [
     { id: match.playerAId, won: winner.winnerId === match.playerAId, gf: scoreA, ga: scoreB, name: match.playerAName },
@@ -462,6 +466,31 @@ export async function getPlayerDashboard(playerId, tokenValue) {
     listPlayerTournamentResults(playerId),
   ]);
   return { valid: true, player, activeTournament, status, recentMatches, seasonPosition, results, season };
+}
+
+
+export async function getTournamentBracket(tournamentId) {
+  return listMatches(tournamentId);
+}
+
+export async function getTopScorers(tournamentId) {
+  return buildScorers(tournamentId);
+}
+
+export async function getSeasonRanking(season) {
+  return buildRanking(season);
+}
+
+export function getPlayerBadges(playerId, stats = {}) {
+  return badgesForPlayer({
+    playerId,
+    titles: stats.titles ?? 0,
+    runnerUps: stats.runnerUps ?? 0,
+    goalsFor: stats.goalsFor ?? 0,
+    goalsAgainst: stats.goalsAgainst ?? 0,
+    wins: stats.wins ?? 0,
+    losses: stats.losses ?? 0,
+  });
 }
 
 export async function seedDemoData() {

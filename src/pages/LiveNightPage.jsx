@@ -6,13 +6,14 @@ import { ScorersTable } from '../components/ScorersTable';
 import { buildScorers, getPlayer, getTournament, listFeed, listMatches } from '../lib/firestore';
 
 export function LiveNightPage() {
-  const { id = '' } = useParams();
+  const { id = '', tournamentId = '' } = useParams();
+  const liveId = tournamentId || id;
   const [tournament, setTournament] = useState(null);
   const [matches, setMatches] = useState([]);
   const [scorers, setScorers] = useState([]);
   const [feed, setFeed] = useState([]);
   const [champion, setChampion] = useState('');
-  useEffect(() => { void (async () => { const t = await getTournament(id); setTournament(t); setMatches(await listMatches(id)); setScorers(await buildScorers(id)); setFeed(await listFeed(id)); if (t?.championPlayerId) setChampion((await getPlayer(t.championPlayerId))?.nickname ?? 'Campeón'); })(); }, [id]);
+  useEffect(() => { void (async () => { const t = await getTournament(liveId); setTournament(t); setMatches(await listMatches(liveId)); setScorers(await buildScorers(liveId)); setFeed(await listFeed(liveId)); if (t?.championPlayerId) setChampion((await getPlayer(t.championPlayerId))?.nickname ?? 'Campeón'); })(); }, [liveId]);
   const next = useMemo(() => matches.find((match) => match.status !== 'finished' && match.playerAId && match.playerBId), [matches]);
   const last = useMemo(() => matches.filter((match) => match.status === 'finished').at(-1), [matches]);
   return (

@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { Dices, Save, Trash2, Trophy } from 'lucide-react';
+import { Dices, Monitor, Save, Trash2, Trophy } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { AdminLayout } from '../components/AdminLayout';
@@ -57,6 +57,7 @@ export function AdminTournamentPage() {
             </div>
             <div className="flex flex-wrap gap-2">
               <Link className="btn btn-ghost" to={`/tournament/${id}`}>Vista pública</Link>
+              <Link className="btn btn-ghost" to={`/tv/${id}`}><Monitor className="h-4 w-4" /> Modo TV</Link>
               <button disabled={parts.length !== 16 || matches.length > 0 || drawing} className="btn btn-primary disabled:opacity-40" onClick={handleDraw}><Dices className="h-4 w-4" /> Sortear cruces</button>
             </div>
           </div>
@@ -81,7 +82,7 @@ export function AdminTournamentPage() {
             </section>
             <section className="glass rounded-3xl p-4 shadow-card"><h2 className="mb-3 font-black">Tabla goleadores</h2><ScorersTable rows={scorers} /></section>
           </aside>
-          <section className="space-y-4"><BracketView matches={matches} onMatchClick={setSelected} /></section>
+          <section className="space-y-4"><BracketView matches={matches} onMatchClick={setSelected} admin /></section>
         </div>
         {selected && <ResultModal match={selected} participants={parts} onClose={() => setSelected(null)} onSaved={async () => { setSelected(null); setToast('Partido guardado y bracket actualizado.'); window.setTimeout(() => setToast(''), 2200); await refresh(); }} />}
       </div>
@@ -95,7 +96,6 @@ function ResultModal({ match, participants, onClose, onSaved }) {
   const [playerAId, setPlayerAId] = useState(match.playerAId || '');
   const [playerBId, setPlayerBId] = useState(match.playerBId || '');
   const [error, setError] = useState('');
-  const [toast, setToast] = useState('');
   const [goals, setGoals] = useState([
     { playerOwnerId: match.playerAId || '', playerOwnerName: match.playerAName, scorerName: '', quantity: 1 },
     { playerOwnerId: match.playerBId || '', playerOwnerName: match.playerBName, scorerName: '', quantity: 1 },
@@ -117,7 +117,9 @@ function ResultModal({ match, participants, onClose, onSaved }) {
     try {
       setError('');
       if (!editableMatch.playerAId || !editableMatch.playerBId) throw new Error('Definí los dos jugadores antes de cerrar el partido.');
-      if (scoreA === scoreB) throw new Error('Debe haber un ganador. Si hubo penales, cargá el score final con ganador.');
+      if (editableMatch.playerAId === editableMatch.playerBId) throw new Error('Un jugador no puede jugar contra sí mismo.');
+      if (scoreA === '' || scoreB === '') throw new Error('Cargá ambos resultados.');
+      if (Number(scoreA) === Number(scoreB)) throw new Error('Debe haber un ganador. Si hubo penales, cargá el score final con ganador.');
       if (match.round === 'FINAL' && !window.confirm('¿Cerrar la final y coronar campeón? Esta acción actualiza ranking anual y perfil de jugadores.')) return;
       await saveManualCross();
       await closeMatch(editableMatch, Number(scoreA), Number(scoreB), goals);
