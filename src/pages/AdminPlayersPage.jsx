@@ -21,8 +21,6 @@ export function AdminPlayersPage() {
 
   useEffect(() => { void refresh(); }, []);
 
-  const playerIndex = useMemo(() => new Map(players.flatMap((player) => [[normalize(player.name || ''), player], [normalize(player.nickname || ''), player]].filter(([key]) => key))), [players]);
-
   async function submitPlayer(event) {
     event.preventDefault();
     if (!form.name.trim()) return;
@@ -68,14 +66,14 @@ export function AdminPlayersPage() {
     <AdminLayout>
       <div className="space-y-6">
         <section className="glass rounded-[2rem] p-5 shadow-card">
-          <p className="text-xs font-black uppercase tracking-[.3em] text-electric">Roster</p>
-          <h1 className="mt-2 text-3xl font-black">Jugadores</h1>
-          <p className="mt-2 text-sm text-slate-300">Cada jugador queda con un accessToken propio para su magic link y todas sus stats anuales.</p>
+          <p className="text-xs font-black uppercase tracking-[.3em] text-electric">Jugadores permanentes</p>
+          <h1 className="mt-2 text-3xl font-black">Perfiles históricos</h1>
+          <p className="mt-2 text-sm text-slate-300">Cada jugador es una entidad anual/histórica con accessToken propio. El equipo default ayuda a precargar torneos, pero el equipo oficial de cada evento vive en tournamentPlayers.</p>
           {message && <p className="mt-4 rounded-2xl bg-winner/10 p-3 text-sm font-black text-winner">{message}</p>}
           <form className="mt-5 space-y-3" onSubmit={submitPlayer}>
             <input className="input" placeholder="Nombre real" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
             <input className="input" placeholder="Apodo visible" value={form.nickname} onChange={(e) => setForm({ ...form, nickname: e.target.value })} />
-            <input className="input" placeholder="Equipo actual / favorito" value={form.currentTeam} onChange={(e) => setForm({ ...form, currentTeam: e.target.value })} />
+            <input className="input" placeholder="Equipo default / último usado" value={form.currentTeam} onChange={(e) => setForm({ ...form, currentTeam: e.target.value })} />
             <input className="input" placeholder="Avatar URL opcional" value={form.avatarUrl} onChange={(e) => setForm({ ...form, avatarUrl: e.target.value })} />
             <button className="btn btn-primary w-full" type="submit"><Plus className="h-4 w-4" /> Crear jugador</button>
           </form>
@@ -89,14 +87,14 @@ export function AdminPlayersPage() {
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <b className="text-lg">{player.nickname}</b>
-                    <p className="text-sm text-slate-300">{player.name} · {player.currentTeam || 'Sin equipo'}</p>
+                    <p className="text-sm text-slate-300">{player.name} · {player.currentTeam || 'Sin equipo default'}</p>
                   </div>
                   <KeyRound className="h-5 w-5 text-electric" />
                 </div>
                 <div className="mt-4 grid gap-2">
                   <input className="input" value={draft.name} onChange={(e) => updateDraft(player.id, 'name', e.target.value)} placeholder="Nombre" />
                   <input className="input" value={draft.nickname} onChange={(e) => updateDraft(player.id, 'nickname', e.target.value)} placeholder="Apodo" />
-                  <input className="input" value={draft.currentTeam} onChange={(e) => updateDraft(player.id, 'currentTeam', e.target.value)} placeholder="Equipo" />
+                  <input className="input" value={draft.currentTeam} onChange={(e) => updateDraft(player.id, 'currentTeam', e.target.value)} placeholder="Equipo default / último usado" />
                 </div>
                 <p className="mt-3 break-all rounded-2xl bg-black/20 p-3 text-[11px] text-slate-400">{playerMagicLink(player)}</p>
                 <div className="mt-3 grid grid-cols-3 gap-2">
@@ -115,17 +113,5 @@ export function AdminPlayersPage() {
         </section>
       </div>
     </AdminLayout>
-  );
-}
-
-function MagicLinksPanel({ title, players, copied, copyText, rotateToken }) {
-  if (!players.length) return <section className="glass rounded-3xl p-5 text-sm text-slate-400">Todavía no hay jugadores para mostrar links.</section>;
-  return (
-    <section className="glass rounded-[2rem] p-5 shadow-card">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between"><div><p className="text-xs font-black uppercase tracking-[.3em] text-electric">WhatsApp ready</p><h2 className="text-2xl font-black">{title}</h2></div><button className="btn btn-primary" onClick={() => copyText(allPlayerLinksMessage(players), 'all-links')}><Copy className="h-4 w-4" /> {copied === 'all-links' ? 'Copiado' : 'Copiar todos los mensajes'}</button></div>
-      <div className="mt-4 grid gap-3 lg:grid-cols-2">
-        {players.map((player) => <div key={player.id} className="rounded-3xl bg-white/5 p-4"><div className="flex items-start justify-between gap-3"><span><b>{player.nickname || player.name}</b><p className="text-sm text-slate-400">{player.currentTeam || 'Equipo pendiente'}</p></span><button className="text-xs text-electric" onClick={() => rotateToken(player.id)}>Regenerar token</button></div><p className="mt-3 break-all rounded-2xl bg-black/20 p-3 text-[11px] text-slate-400">{magicLinkForPlayer(player)}</p><div className="mt-3 grid gap-2 sm:grid-cols-2"><button className="btn btn-ghost text-xs" onClick={() => copyText(magicLinkForPlayer(player), `link-${player.id}`)}><Copy className="h-3 w-3" /> {copied === `link-${player.id}` ? 'Copiado' : 'Copiar link'}</button><button className="btn btn-ghost text-xs" onClick={() => copyText(whatsappMessageForPlayer(player), `wa-${player.id}`)}><MessageCircle className="h-3 w-3" /> {copied === `wa-${player.id}` ? 'Copiado' : 'Mensaje WhatsApp'}</button></div></div>)}
-      </div>
-    </section>
   );
 }
