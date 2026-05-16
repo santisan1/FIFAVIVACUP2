@@ -8,7 +8,23 @@ import { roundLabels } from '../lib/bracket';
 import { addTournamentPlayer, buildScorers, closeMatch, getTournament, listMatches, listPlayers, listTournamentPlayers, removeTournamentPlayer, runDraw, updateMatchPlayers, updateTournamentPlayerTeam } from '../lib/firestore';
 import { allPlayerLinksMessage, magicLinkForPlayer, whatsappMessageForPlayer } from '../lib/magicLinks';
 
-const tabs = ['Resumen', 'Participantes', 'Bracket', 'Resultados', 'Goleadores', 'Links'];
+const setupTabs = ['Resumen', 'Participantes', 'Sala', 'Sorteo'];
+const liveTabs = ['Resumen', 'Sala', 'Sorteo', 'Bracket', 'Resultados', 'Goleadores'];
+
+function normalize(value = '') {
+  return value.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+function uniquePlayersForPicker(players) {
+  const byId = new Map();
+  players.forEach((player) => byId.set(player.id, player));
+  const byName = new Map();
+  [...byId.values()].forEach((player) => {
+    const key = normalize(player.nickname || player.name);
+    if (!byName.has(key)) byName.set(key, player);
+  });
+  return [...byName.values()].sort((a, b) => (a.nickname || a.name).localeCompare(b.nickname || b.name));
+}
 
 export function AdminTournamentPage() {
   const { id = '' } = useParams();
@@ -92,11 +108,12 @@ export function AdminTournamentPage() {
   async function handleDraw() {
     try {
       setError('');
+      if (readyCount < parts.length && !window.confirm(`Faltan ${parts.length - readyCount} jugadores por entrar. ¿Querés sortear igual?`)) return;
       setDrawing(true);
       await runDraw(id);
       await refresh();
-      setActiveTab('Resultados');
-      await notify('Sorteo listo. Ya podés cargar resultados.');
+      setActiveTab('Sorteo');
+      await notify('Sorteo creado. Revelá los cruces uno por uno.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo sortear.');
     } finally {
@@ -130,13 +147,13 @@ export function AdminTournamentPage() {
         <section className="glass rounded-[2rem] p-5 shadow-card">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
-              <p className="text-xs font-black uppercase tracking-[.3em] text-electric">Gestión de torneo</p>
+              <p className="text-xs font-black uppercase tracking-[.3em] text-electric">{isSetup ? 'Setup del torneo' : 'Torneo en vivo'}</p>
               <h1 className="text-4xl font-black">{tournament?.name ?? 'Torneo'}</h1>
               <p className="mt-2 text-sm text-slate-300">Flujo MVP: crear jugadores permanentes → agregar 16 participantes → confirmar equipo en este torneo → copiar magic links → sortear → cargar resultados → ranking anual.</p>
               <p className="mt-1 text-sm text-slate-400">{parts.length}/16 participantes · estado {tournament?.status}</p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Link className="btn btn-ghost" to={`/tournament/${id}`}>Vista pública</Link>
+              <Link className="btn btn-ghost" to={`/tournament/${id}`}>Ver torneo</Link>
               <Link className="btn btn-ghost" to={`/tv/${id}`}><Monitor className="h-4 w-4" /> Modo TV</Link>
               <button disabled={!canDraw || drawing} className="btn btn-primary disabled:opacity-40" onClick={handleDraw}><Dices className="h-4 w-4" /> Sortear</button>
             </div>

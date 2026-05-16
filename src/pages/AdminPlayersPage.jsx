@@ -1,7 +1,29 @@
 import { Copy, KeyRound, Plus, RefreshCw, Save } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AdminLayout } from '../components/AdminLayout';
 import { createPlayer, listPlayers, playerMagicLink, regeneratePlayerToken, updatePlayer } from '../lib/firestore';
+
+
+function normalize(value = '') {
+  return value.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+function duplicateGroups(players) {
+  const groups = players.reduce((acc, player) => {
+    [normalize(player.name), normalize(player.nickname)].filter(Boolean).forEach((key) => {
+      const current = acc[key] || [];
+      if (!current.some((item) => item.id === player.id)) acc[key] = [...current, player];
+    });
+    return acc;
+  }, {});
+  const seenGroups = new Set();
+  return Object.values(groups).filter((group) => group.length > 1).filter((group) => {
+    const key = group.map((player) => player.id).sort().join('-');
+    if (seenGroups.has(key)) return false;
+    seenGroups.add(key);
+    return true;
+  });
+}
 
 export function AdminPlayersPage() {
   const [players, setPlayers] = useState([]);
@@ -9,6 +31,7 @@ export function AdminPlayersPage() {
   const [editing, setEditing] = useState({});
   const [message, setMessage] = useState('');
   const [form, setForm] = useState({ name: '', nickname: '', currentTeam: '', avatarUrl: '' });
+  const duplicates = useMemo(() => duplicateGroups(players), [players]);
   const refresh = () => listPlayers().then((rows) => {
     setPlayers(rows);
     setEditing(Object.fromEntries(rows.map((player) => [player.id, {
@@ -77,6 +100,21 @@ export function AdminPlayersPage() {
             <input className="input" placeholder="Avatar URL opcional" value={form.avatarUrl} onChange={(e) => setForm({ ...form, avatarUrl: e.target.value })} />
             <button className="btn btn-primary w-full" type="submit"><Plus className="h-4 w-4" /> Crear jugador</button>
           </form>
+        </section>
+
+        <section className="glass rounded-3xl p-5 shadow-card">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[.3em] text-electric">Detectar duplicados</p>
+              <h2 className="mt-1 text-2xl font-black">Limpieza opcional</h2>
+            </div>
+            <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-black">{duplicates.length} grupos</span>
+          </div>
+          <p className="mt-2 text-sm text-slate-400">Se agrupan jugadores con el mismo nombre/apodo normalizado. No se borra nada automáticamente.</p>
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            {duplicates.map((group) => <div key={group.map((player) => player.id).join('-')} className="rounded-2xl bg-white/5 p-3 text-sm"><b>{group[0].nickname || group[0].name}</b><p className="mt-1 text-xs text-slate-400">{group.map((player) => `${player.nickname || player.name} (${player.currentTeam || 'sin equipo'})`).join(' · ')}</p></div>)}
+            {duplicates.length === 0 && <p className="rounded-2xl border border-dashed border-white/10 p-3 text-sm text-slate-400">No se detectaron duplicados por nombre/apodo.</p>}
+          </div>
         </section>
 
         <section className="grid gap-3 md:grid-cols-2">

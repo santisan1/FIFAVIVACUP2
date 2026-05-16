@@ -14,11 +14,17 @@ export function PlayerProfilePage() {
 
   useEffect(() => {
     setLoading(true);
-    void getPlayerDashboard(playerId, params.get('token')).then(setDashboard).finally(() => setLoading(false));
+    void getPlayerDashboard(playerId, params.get('token'))
+      .then(setDashboard)
+      .catch((error) => {
+        if (import.meta.env.DEV) console.error('No se pudo cargar el magic link.', error);
+        setDashboard({ valid: false, reason: 'No se pudo cargar Firestore. Revisá conexión o permisos.' });
+      })
+      .finally(() => setLoading(false));
   }, [playerId, params]);
 
   if (loading) return <Skeleton />;
-  if (!dashboard?.valid) return <InvalidLink />;
+  if (!dashboard?.valid) return <InvalidLink reason={dashboard?.reason} />;
 
   const { player, activeTournament, status, recentMatches, seasonPosition, results, season } = dashboard;
   const stats = player.statsGlobal;
@@ -90,4 +96,4 @@ function StatCard({ label, value, hot = false }) { return <div className={`glass
 function Panel({ title, children }) { return <section className="glass rounded-3xl p-5 shadow-card"><h2 className="mb-4 text-xl font-black">{title}</h2><div className="space-y-2">{children}</div></section>; }
 function Empty({ text }) { return <p className="rounded-2xl border border-dashed border-white/10 p-4 text-sm text-slate-400">{text}</p>; }
 function Skeleton() { return <div className="space-y-4"><div className="glass h-48 animate-pulse rounded-[2rem]" /><div className="grid gap-4 md:grid-cols-3"><div className="glass h-32 animate-pulse rounded-3xl" /><div className="glass h-32 animate-pulse rounded-3xl" /><div className="glass h-32 animate-pulse rounded-3xl" /></div></div>; }
-function InvalidLink() { return <div className="mx-auto max-w-lg glass rounded-3xl p-6 text-center shadow-card"><ShieldAlert className="mx-auto h-10 w-10 text-danger" /><h1 className="mt-3 text-2xl font-black">Link inválido</h1><p className="mt-2 text-slate-300">Este link no es válido o fue regenerado. Pedile uno nuevo al admin.</p></div>; }
+function InvalidLink({ reason }) { return <div className="mx-auto max-w-lg glass rounded-3xl p-6 text-center shadow-card"><ShieldAlert className="mx-auto h-10 w-10 text-danger" /><h1 className="mt-3 text-2xl font-black">Link inválido</h1><p className="mt-2 text-slate-300">{reason || 'Este link no es válido o fue regenerado. Pedile uno nuevo al admin.'}</p></div>; }

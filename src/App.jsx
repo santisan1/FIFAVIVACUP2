@@ -5,6 +5,7 @@ import { AdminDashboardPage } from "./pages/AdminDashboardPage";
 import { AdminPlayersPage } from "./pages/AdminPlayersPage";
 import { AdminTournamentPage } from "./pages/AdminTournamentPage";
 import { HomePage } from "./pages/HomePage";
+import { JoinPage } from "./pages/JoinPage";
 import { PlayerProfilePage } from "./pages/PlayerProfilePage";
 import { SeasonPage } from "./pages/SeasonPage";
 import { TournamentPage } from "./pages/TournamentPage";
@@ -20,6 +21,7 @@ export default function App() {
         <Route path="/tv/:tournamentId" element={<LiveNightPage />} />
         <Route path="/bracket/:id" element={<NavigateToTournament />} />
         <Route path="/season/:year" element={<SeasonPage />} />
+        <Route path="/join/:tournamentId/:playerId" element={<JoinPage />} />
         <Route path="/player/:playerId" element={<PlayerProfilePage />} />
         <Route path="/admin" element={<AdminRoute><AdminDashboardPage /></AdminRoute>} />
         <Route path="/admin/players" element={<AdminRoute><AdminPlayersPage /></AdminRoute>} />
