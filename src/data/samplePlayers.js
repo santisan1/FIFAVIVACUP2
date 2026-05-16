@@ -1,0 +1,18 @@
+export const samplePlayers = [
+    { name: 'Santi', nickname: 'Santi', phone: '', teamName: 'Real Madrid' },
+    { name: 'Rama', nickname: 'Rama', phone: '', teamName: 'Manchester City' },
+    { name: 'Fran', nickname: 'Fran', phone: '', teamName: 'PSG' },
+    { name: 'Nico', nickname: 'Nico', phone: '', teamName: 'Bayern Munich' },
+    { name: 'Tomi', nickname: 'Tomi', phone: '', teamName: 'Liverpool' },
+    { name: 'Luca', nickname: 'Luca', phone: '', teamName: 'Barcelona' },
+    { name: 'Juli', nickname: 'Juli', phone: '', teamName: 'Inter' },
+    { name: 'Benja', nickname: 'Benja', phone: '', teamName: 'Arsenal' },
+    { name: 'Mateo', nickname: 'Mateo', phone: '', teamName: 'Milan' },
+    { name: 'Juan', nickname: 'Juan', phone: '', teamName: 'Atlético Madrid' },
+    { name: 'Facu', nickname: 'Facu', phone: '', teamName: 'Dortmund' },
+    { name: 'Agus', nickname: 'Agus', phone: '', teamName: 'Chelsea' },
+    { name: 'Nacho', nickname: 'Nacho', phone: '', teamName: 'Tottenham' },
+    { name: 'Gonza', nickname: 'Gonza', phone: '', teamName: 'Napoli' },
+    { name: 'Lean', nickname: 'Lean', phone: '', teamName: 'Juventus' },
+    { name: 'Mati', nickname: 'Mati', phone: '', teamName: 'Manchester United' },
+];
