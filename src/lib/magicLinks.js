@@ -1,0 +1,16 @@
+export function appOrigin() {
+  return import.meta.env.VITE_PUBLIC_APP_URL || import.meta.env.PUBLIC_APP_URL || window.location.origin;
+}
+
+export function magicLinkForPlayer(player) {
+  return `${appOrigin()}/player/${player.id}?token=${player.accessToken}`;
+}
+
+export function whatsappMessageForPlayer(player) {
+  return `🏆 FIFA Viva Cup\n\n${player.nickname || player.name}, este es tu perfil para seguir el torneo:\n\n${magicLinkForPlayer(player)}\n\nAhí vas a ver tu equipo, próximos partidos, estadísticas, ranking y cómo avanza la noche.`;
+}
+
+export function allPlayerLinksMessage(players) {
+  const rows = players.map((player) => `${player.nickname || player.name}:\n${magicLinkForPlayer(player)}`).join('\n\n');
+  return `🏆 FIFA Viva Cup — Links de jugadores\n\n${rows}`;
+}

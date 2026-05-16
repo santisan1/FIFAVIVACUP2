@@ -12,11 +12,11 @@ service cloud.firestore {
     match /tournamentResults/{id} { allow read, write: if true; }
     match /seasonPointEvents/{id} { allow read, write: if true; }
 
-    // Colecciones legacy/API de invites. Mantener abiertas solo para MVP controlado entre amigos.
-    match /users/{id} { allow read, write: if true; }
-    match /participants/{id} { allow read, write: if true; }
-    match /invites/{id} { allow read, write: if true; }
-    match /badges/{id} { allow read, write: if true; }
-    match /resultProposals/{id} { allow read, write: if true; }
+    // Legacy no usado por el flujo JS actual (sin Firebase Auth ni invites serverless).
+    match /users/{id} { allow read, write: if false; }
+    match /participants/{id} { allow read, write: if false; }
+    match /invites/{id} { allow read, write: if false; }
+    match /badges/{id} { allow read, write: if false; }
+    match /resultProposals/{id} { allow read, write: if false; }
   }
 }

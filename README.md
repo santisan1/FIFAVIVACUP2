@@ -38,15 +38,7 @@ Obligatoria/recomendada para el admin simple:
 VITE_ADMIN_PASSCODE=un-passcode-privado
 ```
 
-Opcionales si vas a usar los endpoints serverless de invites en `/api`:
-
-```bash
-FIREBASE_PROJECT_ID=fifavivacup
-FIREBASE_CLIENT_EMAIL=firebase-adminsdk-xxxxx@fifavivacup.iam.gserviceaccount.com
-FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
-INVITE_TOKEN_PEPPER=un-string-largo-random-y-secreto
-PUBLIC_APP_URL=https://tu-dominio.vercel.app
-```
+No hay endpoints serverless ni Firebase Auth en el flujo actual: los magic links se validan directamente contra `players.accessToken` en Firestore.
 
 ## Acceso admin simple
 
@@ -101,9 +93,8 @@ Puntaje implementado:
 
 1. Importá el repo en Vercel.
 2. Configurá `VITE_ADMIN_PASSCODE`.
-3. Configurá las variables serverless si vas a usar `/api`.
-4. Deploy normal con build command `npm run build`.
-5. Publicá `firestore.rules` en Firebase.
+3. Deploy normal con build command `npm run build`.
+4. Publicá `firestore.rules` en Firebase.
 
 ## Notas
 
@@ -116,7 +107,7 @@ Puntaje implementado:
 - **Admin Mode** (`/admin`): crear torneo/jugadores, copiar magic links, regenerar tokens, agregar 16 jugadores, sortear, editar cruces y cargar resultados/goleadores en menos de 20 segundos.
 - **Player Magic Link Mode** (`/player/:playerId?token=xxx`): dashboard personal premium sin login ni herramientas admin. Valida solo que el token coincida con `players.accessToken`.
 - **Public Tournament Mode** (`/tournament/:id`): transmisión pública con bracket, pendientes, últimos resultados, goleadores, feed y campeón.
-- **Live Night Mode** (`/screen/:id`): vista visual para TV/proyector sin edición.
+- **Live Night Mode** (`/tv/:tournamentId`, alias legacy `/screen/:id`): vista visual para TV/proyector sin edición.
 
 ## Seed demo data
 

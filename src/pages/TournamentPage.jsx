@@ -4,7 +4,7 @@ import { Link, useParams } from 'react-router-dom';
 import { BracketView } from '../components/BracketView';
 import { ScorersTable } from '../components/ScorersTable';
 import { roundLabels } from '../lib/bracket';
-import { buildScorers, getPlayer, getTournament, listFeed, listMatches } from '../lib/firestore';
+import { buildRanking, buildScorers, getPlayer, getTournament, listFeed, listMatches } from '../lib/firestore';
 
 export function TournamentPage() {
   const { id = '' } = useParams();
@@ -12,6 +12,7 @@ export function TournamentPage() {
   const [tournament, setTournament] = useState(null);
   const [matches, setMatches] = useState([]);
   const [scorers, setScorers] = useState([]);
+  const [ranking, setRanking] = useState([]);
   const [feed, setFeed] = useState([]);
   const [champion, setChampion] = useState('');
 
@@ -20,9 +21,11 @@ export function TournamentPage() {
     void (async () => {
       const t = await getTournament(id);
       setTournament(t);
-      setMatches(await listMatches(id));
-      setScorers(await buildScorers(id));
-      setFeed(await listFeed(id));
+      const [matchRows, scorerRows, feedRows, rankingRows] = await Promise.all([listMatches(id), buildScorers(id), listFeed(id), t ? buildRanking(t.season) : Promise.resolve([])]);
+      setMatches(matchRows);
+      setScorers(scorerRows);
+      setFeed(feedRows);
+      setRanking(rankingRows.slice(0, 5));
       if (t?.championPlayerId) setChampion((await getPlayer(t.championPlayerId))?.nickname ?? 'Campeón');
     })().finally(() => setLoading(false));
   }, [id]);
@@ -39,8 +42,8 @@ export function TournamentPage() {
         <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top_right,rgba(251,191,36,.16),transparent_24rem)]" />
         <p className="inline-flex rounded-full border border-electric/30 bg-electric/10 px-3 py-1 text-xs font-black uppercase tracking-[.3em] text-electric"><Radio className="mr-2 h-4 w-4" /> Public Tournament Mode</p>
         <div className="mt-4 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-          <div><h1 className="text-4xl font-black md:text-6xl">{tournament.name}</h1><p className="mt-2 text-slate-300">Estado: <b>{tournament.status}</b> · Temporada {tournament.season}</p></div>
-          <div className="flex flex-wrap gap-2">{champion && <span className="btn bg-pending/15 text-pending"><Crown className="h-4 w-4" /> {champion}</span>}<Link className="btn btn-ghost" to={`/season/${tournament.season}`}>Ranking anual</Link><Link className="btn btn-primary" to={`/screen/${id}`}>Modo pantalla</Link></div>
+          <div><h1 className="text-4xl font-black md:text-6xl">{tournament.name}</h1><p className="mt-2 text-slate-300">Estado: <b>{tournament.status}</b> · Temporada {tournament.season} · {matches.filter((match) => match.status === 'finished').length} partidos jugados</p></div>
+          <div className="flex flex-wrap gap-2">{champion && <span className="btn bg-pending/15 text-pending"><Crown className="h-4 w-4" /> {champion}</span>}<Link className="btn btn-ghost" to={`/season/${tournament.season}`}>Ranking anual</Link><Link className="btn btn-primary" to={`/tv/${id}`}>Modo TV</Link></div>
         </div>
       </section>
 
@@ -50,6 +53,7 @@ export function TournamentPage() {
           <Panel title="Próximos partidos">{pending.length ? pending.map((match) => <MiniMatch key={match.id} match={match} />) : <Empty text="No hay partidos pendientes listos." />}</Panel>
           <Panel title="Últimos resultados">{latest.length ? latest.map((match) => <MiniMatch key={match.id} match={match} result />) : <Empty text="Todavía no hay resultados." />}</Panel>
           <Panel title="Goleadores"><ScorersTable rows={scorers.slice(0, 5)} /></Panel>
+          <Panel title="Ranking corto">{ranking.length ? ranking.map((row, index) => <div key={row.playerId} className="flex items-center justify-between rounded-2xl bg-white/5 p-3 text-sm"><span>#{index + 1} {row.nickname}</span><b className="text-electric">{row.points} pts</b></div>) : <Empty text="Todavía no hay puntos en el ranking." />}</Panel>
           <Panel title="Feed narrativo">{feed.length ? feed.map((event) => <p key={event.id} className="rounded-2xl bg-white/5 p-3 text-sm text-slate-200">{event.text}</p>) : <Empty text="La historia empieza con el sorteo." />}</Panel>
         </aside>
       </div>
