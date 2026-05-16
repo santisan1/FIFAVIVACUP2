@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { Copy, Dices, Link as LinkIcon, ListChecks, Monitor, Save, Trash2, Trophy, UsersRound } from 'lucide-react';
+import { Dices, Monitor, Save, Trash2, Trophy } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { AdminLayout } from '../components/AdminLayout';
@@ -120,8 +120,16 @@ export function AdminTournamentPage() {
       <div className="space-y-6">
         <section className="glass rounded-[2rem] p-5 shadow-card">
           <div className="flex flex-wrap items-center justify-between gap-4">
-            <div><p className="text-xs font-black uppercase tracking-[.3em] text-electric">Gestión de torneo</p><h1 className="text-4xl font-black">{tournament?.name ?? 'Torneo'}</h1><p className="text-sm text-slate-400">{parts.length}/16 jugadores · {finishedMatches.length} partidos jugados · estado {tournament?.status}</p></div>
-            <div className="flex flex-wrap gap-2"><Link className="btn btn-ghost" to={`/tournament/${id}`}>Vista pública</Link><Link className="btn btn-ghost" to={`/tv/${id}`}><Monitor className="h-4 w-4" /> Modo TV</Link><button disabled={!canDraw || drawing} className="btn btn-primary disabled:opacity-40" onClick={handleDraw}><Dices className="h-4 w-4" /> Sortear cruces</button></div>
+            <div>
+              <p className="text-xs font-black uppercase tracking-[.3em] text-electric">Gestión de torneo</p>
+              <h1 className="text-4xl font-black">{tournament?.name ?? 'Torneo'}</h1>
+              <p className="text-sm text-slate-400">{parts.length}/16 jugadores · estado {tournament?.status}</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Link className="btn btn-ghost" to={`/tournament/${id}`}>Vista pública</Link>
+              <Link className="btn btn-ghost" to={`/tv/${id}`}><Monitor className="h-4 w-4" /> Modo TV</Link>
+              <button disabled={parts.length !== 16 || matches.length > 0 || drawing} className="btn btn-primary disabled:opacity-40" onClick={handleDraw}><Dices className="h-4 w-4" /> Sortear cruces</button>
+            </div>
           </div>
           <div className="mt-4 h-3 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-gradient-to-r from-electric to-violet" style={{ width: `${Math.min(100, (parts.length / 16) * 100)}%` }} /></div>
           {error && <p className="mt-4 rounded-2xl bg-danger/10 p-3 text-sm text-danger">{error}</p>}
@@ -129,18 +137,25 @@ export function AdminTournamentPage() {
           {drawing && <motion.div initial={{ scale: .95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="mt-5 rounded-3xl border border-electric/30 bg-electric/10 p-5 text-center text-2xl font-black">🎲 La arena decide los cruces...</motion.div>}
         </section>
 
-        <nav className="flex gap-2 overflow-auto rounded-full border border-white/10 bg-white/5 p-2">
-          {tabs.map((tab) => <button key={tab} className={`btn px-4 py-2 text-xs ${activeTab === tab ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setActiveTab(tab)}>{tab}</button>)}
-        </nav>
-
-        {activeTab === 'Resumen' && <SummaryTab parts={parts} matches={matches} readyMatches={readyMatches} scorers={scorers} setActiveTab={setActiveTab} />}
-        {activeTab === 'Participantes' && <ParticipantsTab parts={parts} available={available} selectedIds={selectedIds} setSelectedIds={setSelectedIds} addSelected={addSelected} addAllAvailable={addAllAvailable} fillFirst16={fillFirst16} refresh={refresh} />}
-        {activeTab === 'Bracket' && <BracketView matches={matches} onMatchClick={setSelected} admin />}
-        {activeTab === 'Resultados' && <ResultsTab matches={pendingMatches} scoreDrafts={scoreDrafts} setDraft={setDraft} closeQuickMatch={closeQuickMatch} openModal={setSelected} />}
-        {activeTab === 'Goleadores' && <section className="glass rounded-3xl p-5 shadow-card"><h2 className="mb-3 text-xl font-black">Tabla de goleadores</h2><ScorersTable rows={scorers} /></section>}
-        {activeTab === 'Links' && <LinksTab players={tournamentPlayers.map((part) => part.player)} copied={copied} copyText={copyText} />}
-
-        {selected && <ResultModal match={selected} participants={parts} onClose={() => setSelected(null)} onSaved={async () => { setSelected(null); await refresh(); await notify('Partido guardado y bracket actualizado.'); }} />}
+        <div className="grid gap-6 xl:grid-cols-[360px_1fr]">
+          <aside className="space-y-5">
+            <section className="glass rounded-3xl p-4 shadow-card">
+              <h2 className="font-black">Agregar jugadores</h2>
+              <div className="mt-3 max-h-72 space-y-2 overflow-auto pr-1">
+                {available.map((player) => <button key={player.id} disabled={parts.length >= 16} className="btn btn-ghost w-full justify-between" onClick={() => addTournamentPlayer(id, player).then(refresh)}><span>{player.nickname}</span><span className="text-xs text-slate-400">{player.currentTeam}</span></button>)}
+              </div>
+            </section>
+            <section className="glass rounded-3xl p-4 shadow-card">
+              <h2 className="font-black">Plantel ({parts.length}/16)</h2>
+              <div className="mt-3 space-y-2">
+                {parts.map((part) => <div key={part.id} className="flex items-center justify-between rounded-2xl bg-white/5 p-3"><span><b>{part.playerNickname}</b><p className="text-xs text-slate-400">{part.teamName}</p></span><button onClick={() => removeTournamentPlayer(part.id).then(refresh)}><Trash2 className="h-4 w-4 text-danger" /></button></div>)}
+              </div>
+            </section>
+            <section className="glass rounded-3xl p-4 shadow-card"><h2 className="mb-3 font-black">Tabla goleadores</h2><ScorersTable rows={scorers} /></section>
+          </aside>
+          <section className="space-y-4"><BracketView matches={matches} onMatchClick={setSelected} admin /></section>
+        </div>
+        {selected && <ResultModal match={selected} participants={parts} onClose={() => setSelected(null)} onSaved={async () => { setSelected(null); setToast('Partido guardado y bracket actualizado.'); window.setTimeout(() => setToast(''), 2200); await refresh(); }} />}
       </div>
     </AdminLayout>
   );
@@ -185,6 +200,7 @@ function ResultModal({ match, participants, onClose, onSaved }) {
       setError('');
       if (!editableMatch.playerAId || !editableMatch.playerBId) throw new Error('Definí los dos jugadores antes de cerrar el partido.');
       if (editableMatch.playerAId === editableMatch.playerBId) throw new Error('Un jugador no puede jugar contra sí mismo.');
+      if (scoreA === '' || scoreB === '') throw new Error('Cargá ambos resultados.');
       if (Number(scoreA) === Number(scoreB)) throw new Error('Debe haber un ganador. Si hubo penales, cargá el score final con ganador.');
       if (match.round === 'FINAL' && !window.confirm('¿Cerrar la final y coronar campeón? Esta acción actualiza ranking anual y perfil de jugadores.')) return;
       await saveManualCross();

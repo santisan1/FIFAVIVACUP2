@@ -89,11 +89,8 @@ function timestampValue(value) {
 }
 
 export async function getActiveTournament() {
-  const snap = await getDocs(query(collection(db, 'tournaments'), orderBy('createdAt', 'desc')));
-  return snap.docs
-    .map((item) => withId(item))
-    .filter((item) => ['draft', 'draw', 'active'].includes(item.status))
-    .sort((a, b) => timestampValue(b.createdAt) - timestampValue(a.createdAt))[0] ?? null;
+  const snap = await getDocs(query(collection(db, 'tournaments'), where('status', 'in', ['draft', 'draw', 'active']), orderBy('createdAt', 'desc'), limit(1)));
+  return snap.docs[0] ? withId(snap.docs[0]) : null;
 }
 
 export async function createTournament(input) {

@@ -42,8 +42,8 @@ export function TournamentPage() {
         <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top_right,rgba(251,191,36,.16),transparent_24rem)]" />
         <p className="inline-flex rounded-full border border-electric/30 bg-electric/10 px-3 py-1 text-xs font-black uppercase tracking-[.3em] text-electric"><Radio className="mr-2 h-4 w-4" /> Public Tournament Mode</p>
         <div className="mt-4 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-          <div><h1 className="text-4xl font-black md:text-6xl">{tournament.name}</h1><p className="mt-2 text-slate-300">Estado: <b>{tournament.status}</b> · Temporada {tournament.season} · {matches.filter((match) => match.status === 'finished').length} partidos jugados</p></div>
-          <div className="flex flex-wrap gap-2">{champion && <span className="btn bg-pending/15 text-pending"><Crown className="h-4 w-4" /> {champion}</span>}<Link className="btn btn-ghost" to={`/season/${tournament.season}`}>Ranking anual</Link><Link className="btn btn-primary" to={`/tv/${id}`}>Modo TV</Link></div>
+          <div><h1 className="text-4xl font-black md:text-6xl">{tournament.name}</h1><p className="mt-2 text-slate-300">Estado: <b>{tournament.status}</b> · Temporada {tournament.season}</p></div>
+          <div className="flex flex-wrap gap-2">{champion && <span className="btn bg-pending/15 text-pending"><Crown className="h-4 w-4" /> {champion}</span>}<Link className="btn btn-ghost" to={`/season/${tournament.season}`}>Ranking anual</Link><Link className="btn btn-primary" to={`/tv/${id}`}>Modo pantalla</Link></div>
         </div>
       </section>
 
