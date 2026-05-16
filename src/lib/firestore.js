@@ -120,11 +120,12 @@ export async function addTournamentPlayer(tournamentId, player, teamName) {
     playerId: player.id,
     playerName: player.name,
     playerNickname: player.nickname,
-    teamName: teamName || player.currentTeam,
+    teamName: (teamName ?? player.currentTeam ?? '').trim(),
     seed: existing.length + 1,
     eliminated: false,
     finalPosition: null,
     createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
   });
 }
 
@@ -146,10 +147,28 @@ export async function addTournamentPlayers(tournamentId, selectedPlayers) {
       eliminated: false,
       finalPosition: null,
       createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
     });
   });
   await batch.commit();
   return playersToAdd.length;
+}
+
+
+export async function updateTournamentPlayerTeam(participant, teamName, { makeDefault = false } = {}) {
+  const cleanTeamName = teamName.trim();
+  const batch = writeBatch(db);
+  batch.update(doc(db, 'tournamentPlayers', participant.id), { teamName: cleanTeamName, updatedAt: serverTimestamp() });
+  if (makeDefault) batch.update(doc(db, 'players', participant.playerId), { currentTeam: cleanTeamName, updatedAt: serverTimestamp() });
+
+  const matches = await listMatches(participant.tournamentId);
+  matches.filter((match) => match.status !== 'finished' && (match.playerAId === participant.playerId || match.playerBId === participant.playerId)).forEach((match) => {
+    batch.update(doc(db, 'matches', match.id), {
+      ...(match.playerAId === participant.playerId ? { teamA: cleanTeamName } : {}),
+      ...(match.playerBId === participant.playerId ? { teamB: cleanTeamName } : {}),
+    });
+  });
+  await batch.commit();
 }
 
 export async function removeTournamentPlayer(id) {
@@ -295,6 +314,19 @@ export async function closeMatch(match, scoreA, scoreB, goals) {
   if (match.round === 'FINAL') await awardTournamentPoints(tournament, winner.winnerId, winner.loserId);
 }
 
+function goalsFor(matches, playerId) {
+  return matches.reduce((total, match) => {
+    if (match.status !== 'finished') return total;
+    if (match.playerAId === playerId) return total + Number(match.scoreA ?? 0);
+    if (match.playerBId === playerId) return total + Number(match.scoreB ?? 0);
+    return total;
+  }, 0);
+}
+
+function lossesFor(matches, playerId) {
+  return matches.filter((match) => match.loserId === playerId).length;
+}
+
 function goalsAgainstFor(matches, playerId) {
   return matches.reduce((total, match) => {
     if (match.status !== 'finished') return total;
@@ -367,8 +399,13 @@ async function awardTournamentPoints(tournament, championId, runnerUpId) {
       teamName: participant.teamName,
       placement,
       finalPosition,
+      pointsEarned: totalTournamentPoints,
       wins: winsFor(matches, participant.playerId),
+      losses: lossesFor(matches, participant.playerId),
+      goalsFor: goalsFor(matches, participant.playerId),
       goalsAgainst: goalsAgainstFor(matches, participant.playerId),
+      title: participant.playerId === championId,
+      runnerUp: participant.playerId === runnerUpId,
       placementPoints: placementPointValue,
       victoryPoints: winsFor(matches, participant.playerId) * 2,
       scorerBonus,
