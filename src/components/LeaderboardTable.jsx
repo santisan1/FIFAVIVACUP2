@@ -1,7 +1,7 @@
 const SORT_OPTIONS = [
-  { key: 'points', label: 'Puntaje' },
-  { key: 'goalsFor', label: 'Goles hechos' },
-  { key: 'goalsAgainst', label: 'Goles recibidos' },
+  { key: 'points', label: 'Pts' },
+  { key: 'goalsFor', label: 'Goles +' },
+  { key: 'goalsAgainst', label: 'Goles -' },
   { key: 'wins', label: 'Victorias' },
   { key: 'titles', label: 'Títulos' },
 ];
@@ -17,31 +17,29 @@ function sortRows(rows, sortBy) {
 
 export function LeaderboardTable({ rows, sortBy = 'points', onSortChange }) {
   const sortedRows = sortRows(rows, sortBy);
+  const sortLabel = SORT_OPTIONS.find((option) => option.key === sortBy)?.label;
+  const renderSortableHeader = (label, key, extraClass = '') => (
+    <th className={`p-4 ${extraClass}`}>
+      <button type="button" className={`inline-flex items-center gap-1 font-black ${sortBy === key ? 'text-electric' : 'text-slate-400'}`} onClick={() => onSortChange?.(key)}>
+        <span>{label}</span>
+        <span className="text-[10px]">{sortBy === key ? '▼' : '↕'}</span>
+      </button>
+    </th>
+  );
 
   return (
     <div className="glass overflow-hidden rounded-3xl shadow-card">
-      <div className="flex flex-wrap gap-2 border-b border-white/10 p-3">
-        {SORT_OPTIONS.map((option) => (
-          <button
-            key={option.key}
-            type="button"
-            className={`rounded-full px-3 py-1 text-xs font-black uppercase tracking-[.15em] ${sortBy === option.key ? 'bg-electric/20 text-electric' : 'bg-white/5 text-slate-300'}`}
-            onClick={() => onSortChange?.(option.key)}
-          >
-            {option.label}
-          </button>
-        ))}
-      </div>
+      <div className="border-b border-white/10 p-3 text-xs text-slate-400">Orden actual: <span className="font-black text-electric">{sortLabel}</span></div>
       <table className="w-full text-sm">
         <thead className="bg-white/5 text-left text-xs uppercase tracking-[.2em] text-slate-400">
           <tr>
             <th className="p-4">Rank</th>
             <th className="p-4">Jugador</th>
-            <th className="p-4">Pts</th>
-            <th className="hidden p-4 md:table-cell">Goles +</th>
-            <th className="hidden p-4 md:table-cell">Goles -</th>
-            <th className="hidden p-4 md:table-cell">Victorias</th>
-            <th className="hidden p-4 md:table-cell">Títulos</th>
+            {renderSortableHeader('Pts', 'points')}
+            {renderSortableHeader('Goles +', 'goalsFor', 'hidden md:table-cell')}
+            {renderSortableHeader('Goles -', 'goalsAgainst', 'hidden md:table-cell')}
+            {renderSortableHeader('Victorias', 'wins', 'hidden md:table-cell')}
+            {renderSortableHeader('Títulos', 'titles', 'hidden md:table-cell')}
           </tr>
         </thead>
         <tbody>
