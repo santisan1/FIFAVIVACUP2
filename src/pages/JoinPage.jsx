@@ -37,7 +37,7 @@ export function JoinPage() {
     <div className="mx-auto max-w-2xl space-y-5">
       <section className="glass overflow-hidden rounded-[2rem] p-6 text-center shadow-card">
         <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-winner/15 text-winner"><CheckCircle2 className="h-9 w-9" /></div>
-        <p className="mt-4 text-xs font-black uppercase tracking-[.3em] text-electric">Sala FIFA Viva Cup</p>
+        <p className="mt-4 text-xs font-black uppercase tracking-[.3em] text-electric">Sala FIFAVIVA CUP</p>
         <h1 className="mt-2 text-4xl font-black md:text-5xl">Estás adentro, {player.nickname || player.name}</h1>
         <p className="mt-3 text-xl font-black text-winner">Equipo: {participant.teamName || 'pendiente'}</p>
         <p className="mt-2 text-slate-300">{stateText(tournament.status)}</p>

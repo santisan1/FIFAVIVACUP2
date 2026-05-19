@@ -16,7 +16,7 @@ export function AppShell({ children }) {
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
           <Link to="/" className="flex items-center gap-3 font-black tracking-tight">
             <span className="grid h-10 w-10 place-items-center rounded-2xl bg-gradient-to-br from-electric to-violet shadow-glow"><Trophy className="h-5 w-5" /></span>
-            <span className="hidden sm:inline">FIFA Viva Cup</span>
+            <span className="hidden sm:inline">FIFAVIVA CUP</span>
             <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] uppercase tracking-[.2em] text-slate-300">{mode}</span>
           </Link>
           <nav className="flex items-center gap-2 text-xs md:text-sm">

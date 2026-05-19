@@ -1,7 +1,6 @@
 import { Crown, ShieldAlert, Trophy } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
-import { ScorersTable } from '../components/ScorersTable';
 import { getPlayerDashboard } from '../lib/firestore';
 import { badgesForPlayer } from '../lib/narratives';
 import { roundLabels } from '../lib/bracket';
@@ -11,6 +10,7 @@ export function PlayerProfilePage() {
   const [params] = useSearchParams();
   const [dashboard, setDashboard] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [showIntro, setShowIntro] = useState(true);
 
   useEffect(() => {
     setLoading(true);
@@ -23,8 +23,9 @@ export function PlayerProfilePage() {
       .finally(() => setLoading(false));
   }, [playerId, params]);
 
-  if (loading) return <Skeleton />;
+  if (loading) return <SplashScreen />;
   if (!dashboard?.valid) return <InvalidLink reason={dashboard?.reason} />;
+  if (showIntro) return <SplashScreen onEnter={() => setShowIntro(false)} playerName={dashboard?.player?.nickname || dashboard?.player?.name} tournamentName={dashboard?.activeTournament?.name} />;
 
   const { player, activeTournament, status, recentMatches, seasonPosition, results, season } = dashboard;
   const stats = player.statsGlobal;
@@ -40,12 +41,12 @@ export function PlayerProfilePage() {
   return (
     <div className="space-y-6">
       <section className={`glass overflow-hidden rounded-[2rem] p-6 shadow-card ${status.isChampion ? 'border-pending/40 bg-pending/10' : ''}`}>
-        <p className="text-xs font-black uppercase tracking-[.3em] text-electric">Player Magic Link Mode</p>
+        <p className="text-xs font-black uppercase tracking-[.3em] text-electric">FIFAVIVA CUP · Modo jugador</p>
         <div className="mt-4 flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
           <div>
             <div className="mb-3 inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-black">{mainBadge}</div>
             <h1 className="text-5xl font-black md:text-6xl">{player.nickname}</h1>
-            <p className="mt-2 text-slate-300">Perfil histórico: {player.name} · default {player.currentTeam || 'sin equipo default'}</p>
+            <p className="mt-2 text-slate-300">Perfil histórico: {player.name}</p>
             <p className="mt-2 text-sm font-black text-electric">Equipo en torneo activo: {tournamentTeam || 'pendiente / no cargado'}</p>
             <p className="mt-3 inline-flex rounded-full bg-white/10 px-4 py-2 text-sm font-black">Estado: {status.state}</p>
           </div>
@@ -78,8 +79,7 @@ export function PlayerProfilePage() {
 
       <section className="grid gap-5 lg:grid-cols-2">
         <Panel title="Últimos partidos">{recentMatches.length === 0 ? <Empty text="Aún no hay partidos cerrados." /> : recentMatches.map((match) => <div key={match.id} className="rounded-2xl bg-white/5 p-3 text-sm"><b>{match.playerAName} {match.scoreA}-{match.scoreB} {match.playerBName}</b><p className={match.winnerId === player.id ? 'text-winner' : 'text-danger'}>{match.winnerId === player.id ? 'Victoria' : 'Derrota'} · {roundLabels[match.round]}</p></div>)}</Panel>
-        <Panel title="Ranking anual"><p className="text-xs text-slate-400">Acumula por jugador permanente, no por equipo ni por participación.</p><div className="space-y-2">{seasonPosition.top5.map((row, index) => <div key={row.playerId} className={`flex items-center justify-between rounded-2xl p-3 text-sm ${row.playerId === player.id ? 'bg-electric/15' : 'bg-white/5'}`}><span>#{index + 1} {row.nickname}<br /><small className="text-slate-400">{row.team || 'sin equipo default'}</small></span><b>{row.points} pts</b></div>)}{seasonPosition.pointsBehindAbove > 0 && <p className="text-xs text-slate-400">Estás a {seasonPosition.pointsBehindAbove} pts del de arriba.</p>}</div></Panel>
-        <Panel title="Top goleadores del torneo"><ScorersTable rows={status.topScorers ?? []} highlightPlayerId={player.id} /></Panel>
+        <Panel title="Ranking anual"><p className="text-xs text-slate-400">Acumula por jugador permanente, no por equipo ni por participación.</p><div className="space-y-2">{seasonPosition.top5.map((row, index) => <div key={row.playerId} className={`flex items-center justify-between rounded-2xl p-3 text-sm ${row.playerId === player.id ? 'bg-electric/15' : 'bg-white/5'}`}><span>#{index + 1} {row.nickname}<br /><small className="text-slate-400">{row.team || 'sin equipo'}</small></span><b>{row.points} pts</b></div>)}{seasonPosition.pointsBehindAbove > 0 && <p className="text-xs text-slate-400">Estás a {seasonPosition.pointsBehindAbove} pts del de arriba.</p>}</div></Panel>
         <Panel title="Torneos jugados">{results.length === 0 ? <Empty text="Todavía no hay torneos cerrados." /> : results.slice(0, 5).map((result) => <div key={result.id} className="flex items-center justify-between rounded-2xl bg-white/5 p-3 text-sm"><span>{result.tournamentName}<br /><small className="text-slate-400">{result.placement}</small></span><b className="text-electric">+{result.annualPoints}</b></div>)}</Panel>
         <Panel title="Badges"><div className="flex flex-wrap gap-2">{badges.map((badge) => <span key={badge} className="rounded-full border border-electric/30 bg-electric/10 px-3 py-2 text-xs font-black text-electric">{badge}</span>)}</div></Panel>
       </section>
@@ -97,3 +97,5 @@ function Panel({ title, children }) { return <section className="glass rounded-3
 function Empty({ text }) { return <p className="rounded-2xl border border-dashed border-white/10 p-4 text-sm text-slate-400">{text}</p>; }
 function Skeleton() { return <div className="space-y-4"><div className="glass h-48 animate-pulse rounded-[2rem]" /><div className="grid gap-4 md:grid-cols-3"><div className="glass h-32 animate-pulse rounded-3xl" /><div className="glass h-32 animate-pulse rounded-3xl" /><div className="glass h-32 animate-pulse rounded-3xl" /></div></div>; }
 function InvalidLink({ reason }) { return <div className="mx-auto max-w-lg glass rounded-3xl p-6 text-center shadow-card"><ShieldAlert className="mx-auto h-10 w-10 text-danger" /><h1 className="mt-3 text-2xl font-black">Link inválido</h1><p className="mt-2 text-slate-300">{reason || 'Este link no es válido o fue regenerado. Pedile uno nuevo al admin.'}</p></div>; }
+
+function SplashScreen({ onEnter, playerName, tournamentName }) { return <div className="mx-auto max-w-3xl glass rounded-[2rem] p-8 text-center shadow-card"><p className="text-xs font-black uppercase tracking-[.35em] text-electric">FIFAVIVA CUP</p><h1 className="mt-4 text-5xl font-black md:text-7xl">Noche de torneo</h1><p className="mt-4 text-slate-300">{playerName ? `${playerName}, ` : ''}tu perfil está listo para competir{tournamentName ? ` en ${tournamentName}` : ''}.</p>{onEnter ? <button className="btn btn-primary mt-6" onClick={onEnter}><Trophy className="h-4 w-4" /> Entrar al torneo</button> : <p className="mt-6 text-sm text-slate-400">Cargando vestuario...</p>}</div>; }

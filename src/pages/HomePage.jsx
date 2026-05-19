@@ -37,7 +37,7 @@ export function HomePage() {
         <div className="absolute inset-0 bg-night/70 backdrop-blur-[2px]" />
         <div className="relative max-w-3xl space-y-5">
           <p className="inline-flex rounded-full border border-electric/30 bg-electric/10 px-4 py-2 text-xs font-black uppercase tracking-[.3em] text-electric"><Sparkles className="mr-2 h-4 w-4" /> Broadcast deportivo para tu juntada</p>
-          <h1 className="text-5xl font-black leading-none md:text-7xl">FIFA Viva Cup</h1>
+          <h1 className="text-5xl font-black leading-none md:text-7xl">FIFAVIVA CUP</h1>
           <p className="text-lg text-slate-200 md:text-xl">Bracket épico, resultados en segundos, ranking anual y perfiles por magic link sin login pesado.</p>
         </div>
       </motion.section>
