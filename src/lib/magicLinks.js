@@ -11,7 +11,7 @@ export function getJoinLink(tournamentId, playerId, token) {
 }
 
 export function getJoinWhatsappMessage(player, tournamentPlayer, tournament) {
-  return `🏆 FIFA Viva Cup\n\n${player.nickname || player.name}, entrá a la sala del torneo con este link:\n\n${getJoinLink(tournament.id, player.id, player.accessToken)}\n\nEquipo asignado: ${tournamentPlayer.teamName || 'pendiente'}\n\nCuando entres, vas a aparecer como presente y esperamos a que estén todos para sortear los cruces.`;
+  return `🏆 FIFAVIVA CUP\n\n${player.nickname || player.name}, entrá a la sala del torneo con este link:\n\n${getJoinLink(tournament.id, player.id, player.accessToken)}\n\nEquipo asignado: ${tournamentPlayer.teamName || 'pendiente'}\n\nCuando entres, vas a aparecer como presente y esperamos a que estén todos para sortear los cruces.`;
 }
 
 export function getAllJoinWhatsappMessages(players, tournamentPlayers, tournament) {
@@ -20,10 +20,10 @@ export function getAllJoinWhatsappMessages(players, tournamentPlayers, tournamen
 }
 
 export function whatsappMessageForPlayer(player) {
-  return `🏆 FIFA Viva Cup\n\n${player.nickname || player.name}, este es tu perfil para seguir el torneo:\n\n${magicLinkForPlayer(player)}\n\nAhí vas a ver tu perfil histórico, el equipo asignado por el admin para el torneo activo, próximo rival, estadísticas, ranking y cómo avanza la noche.`;
+  return `🏆 FIFAVIVA CUP\n\n${player.nickname || player.name}, este es tu perfil para seguir el torneo:\n\n${magicLinkForPlayer(player)}\n\nAhí vas a ver tu perfil histórico, el equipo asignado por el admin para el torneo activo, próximo rival, estadísticas, ranking y cómo avanza la noche.`;
 }
 
 export function allPlayerLinksMessage(players) {
   const rows = players.map((player) => `${player.nickname || player.name}:\n${magicLinkForPlayer(player)}`).join('\n\n');
-  return `🏆 FIFA Viva Cup — Links de jugadores\n\n${rows}`;
+  return `🏆 FIFAVIVA CUP — Links de jugadores\n\n${rows}`;
 }
