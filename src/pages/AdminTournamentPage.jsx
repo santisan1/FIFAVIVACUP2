@@ -61,6 +61,9 @@ export function AdminTournamentPage() {
   const participants = useMemo(() => parts.map((part) => ({ ...part, player: playerById[part.playerId] })).filter((part) => part.player), [parts, playerById]);
   const available = useMemo(() => players.filter((player) => !parts.some((part) => part.playerId === player.id)), [players, parts]);
   const selectedPlayer = playerById[selectedPlayerId];
+  const isSetup = tournament?.status !== 'live';
+  const tabs = isSetup ? setupTabs : liveTabs;
+  const readyCount = participants.filter((participant) => participant.teamName?.trim()).length;
   const readyMatches = matches.filter((match) => match.status !== 'finished' && match.playerAId && match.playerBId);
   const finishedMatches = matches.filter((match) => match.status === 'finished');
   const canDraw = parts.length === 16 && matches.length === 0;
