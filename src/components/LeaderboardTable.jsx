@@ -1,3 +1,11 @@
+const SORT_OPTIONS = [
+  { key: 'points', label: 'Puntaje' },
+  { key: 'goalsFor', label: 'Goles hechos' },
+  { key: 'goalsAgainst', label: 'Goles recibidos' },
+  { key: 'wins', label: 'Victorias' },
+  { key: 'titles', label: 'Títulos' },
+];
+
 function sortRows(rows, sortBy) {
   const sorted = [...rows];
   sorted.sort((a, b) => {
@@ -9,27 +17,31 @@ function sortRows(rows, sortBy) {
 
 export function LeaderboardTable({ rows, sortBy = 'points', onSortChange }) {
   const sortedRows = sortRows(rows, sortBy);
-  function SortHeader({ label, keyName }) {
-    const active = sortBy === keyName;
-    return (
-      <button type="button" className={`inline-flex items-center gap-1 ${active ? 'text-electric' : 'text-slate-400'}`} onClick={() => onSortChange?.(keyName)}>
-        {label} {active ? '↓' : ''}
-      </button>
-    );
-  }
 
   return (
     <div className="glass overflow-hidden rounded-3xl shadow-card">
+      <div className="flex flex-wrap gap-2 border-b border-white/10 p-3">
+        {SORT_OPTIONS.map((option) => (
+          <button
+            key={option.key}
+            type="button"
+            className={`rounded-full px-3 py-1 text-xs font-black uppercase tracking-[.15em] ${sortBy === option.key ? 'bg-electric/20 text-electric' : 'bg-white/5 text-slate-300'}`}
+            onClick={() => onSortChange?.(option.key)}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
       <table className="w-full text-sm">
         <thead className="bg-white/5 text-left text-xs uppercase tracking-[.2em] text-slate-400">
           <tr>
             <th className="p-4">Rank</th>
             <th className="p-4">Jugador</th>
-            <th className="p-4"><SortHeader label="Pts" keyName="points" /></th>
-            <th className="hidden p-4 md:table-cell"><SortHeader label="Goles +" keyName="goalsFor" /></th>
-            <th className="hidden p-4 md:table-cell"><SortHeader label="Goles -" keyName="goalsAgainst" /></th>
-            <th className="hidden p-4 md:table-cell"><SortHeader label="Victorias" keyName="wins" /></th>
-            <th className="hidden p-4 md:table-cell"><SortHeader label="Títulos" keyName="titles" /></th>
+            <th className="p-4">Pts</th>
+            <th className="hidden p-4 md:table-cell">Goles +</th>
+            <th className="hidden p-4 md:table-cell">Goles -</th>
+            <th className="hidden p-4 md:table-cell">Victorias</th>
+            <th className="hidden p-4 md:table-cell">Títulos</th>
           </tr>
         </thead>
         <tbody>
