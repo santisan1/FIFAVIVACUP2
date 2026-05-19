@@ -2,6 +2,7 @@ import { Crown, Radio, Trophy } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { BracketView } from '../components/BracketView';
+import { DrawReveal } from '../components/DrawReveal';
 import { ScorersTable } from '../components/ScorersTable';
 import { roundLabels } from '../lib/bracket';
 import { buildRanking, buildScorers, getPlayer, getTournament, listFeed, listMatches, listTournamentPlayers } from '../lib/firestore';
@@ -55,7 +56,7 @@ export function TournamentPage() {
         <section className="glass rounded-3xl p-5 text-center shadow-card">
           {tournament.status === 'draft' && <><h2 className="text-3xl font-black">Torneo en preparación</h2><p className="mt-2 text-slate-300">El admin está cargando jugadores y equipos.</p></>}
           {tournament.status === 'lobby' && <><h2 className="text-3xl font-black">Sala pública</h2><p className="mt-2 text-slate-300">{readyCount}/{participants.length || 16} jugadores presentes. Esperando sorteo.</p><div className="mt-4 h-4 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-gradient-to-r from-winner to-electric" style={{ width: `${participants.length ? (readyCount / participants.length) * 100 : 0}%` }} /></div></>}
-          {tournament.status === 'draw' && <><h2 className="text-3xl font-black">Sorteo en curso</h2><p className="mt-2 text-slate-300">Los cruces se están revelando.</p></>}
+          {tournament.status === 'draw' && <><h2 className="text-3xl font-black">Sorteo en curso</h2><p className="mt-2 text-slate-300">Los cruces se están revelando con suspenso, uno por uno.</p><div className="mt-5 text-left"><DrawReveal participants={participants} /></div></>}
         </section>
       )}
 
