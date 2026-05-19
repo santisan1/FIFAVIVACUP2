@@ -19,6 +19,7 @@ export function TournamentPage() {
   const [participants, setParticipants] = useState([]);
   const [tournamentResults, setTournamentResults] = useState([]);
   const [finalStep, setFinalStep] = useState(0);
+  const [showAnnual, setShowAnnual] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -35,6 +36,28 @@ export function TournamentPage() {
       if (t?.championPlayerId) setChampion((await getPlayer(t.championPlayerId))?.nickname ?? 'Campeón');
     })().finally(() => setLoading(false));
   }, [id]);
+
+  useEffect(() => {
+    if (tournament?.status !== 'finished') {
+      setFinalStep(0);
+      setShowAnnual(false);
+      return;
+    }
+    setFinalStep(0);
+    setShowAnnual(false);
+    const timers = [1200, 2600, 4200].map((time, index) => setTimeout(() => setFinalStep(index + 1), time));
+    return () => timers.forEach(clearTimeout);
+  }, [tournament?.status, id]);
+
+  useEffect(() => {
+    if (tournament?.status !== 'finished' || tournamentResults.length > 0 || !tournament?.season) return;
+    const refreshId = setTimeout(() => {
+      void listTournamentResultsBySeason(tournament.season).then((seasonResults) => {
+        setTournamentResults(seasonResults.filter((result) => result.tournamentId === id));
+      });
+    }, 1500);
+    return () => clearTimeout(refreshId);
+  }, [tournament?.status, tournament?.season, tournamentResults.length, id]);
 
   const pending = useMemo(() => matches.filter((match) => match.status !== 'finished' && match.playerAId && match.playerBId).slice(0, 5), [matches]);
   const latest = useMemo(() => matches.filter((match) => match.status === 'finished').slice(-5).reverse(), [matches]);
@@ -61,6 +84,50 @@ export function TournamentPage() {
           {tournament.status === 'draft' && <><h2 className="text-3xl font-black">Torneo en preparación</h2><p className="mt-2 text-slate-300">El admin está cargando jugadores y equipos.</p></>}
           {tournament.status === 'lobby' && <><h2 className="text-3xl font-black">Sala pública</h2><p className="mt-2 text-slate-300">{readyCount}/{participants.length || 16} jugadores presentes. Esperando sorteo.</p><div className="mt-4 h-4 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-gradient-to-r from-winner to-electric" style={{ width: `${participants.length ? (readyCount / participants.length) * 100 : 0}%` }} /></div></>}
           {tournament.status === 'draw' && <><h2 className="text-3xl font-black">Sorteo en curso</h2><p className="mt-2 text-slate-300">Los cruces se están revelando con suspenso, uno por uno.</p><div className="mt-5 text-left"><DrawReveal participants={participants} /></div></>}
+        </section>
+      )}
+
+      {tournament.status === 'finished' && (
+        <section className="glass rounded-3xl p-6 shadow-card">
+          <h2 className="text-3xl font-black">🏆 Show final</h2>
+          {!showAnnual ? (
+            <>
+              <p className="mt-2 text-slate-300">Revelando podio y tabla del torneo.</p>
+              <div className="mt-5 grid gap-3 md:grid-cols-3">
+                <PodiumCard label="3º puesto" player={tournamentResults[2]} active={finalStep >= 1} accent="from-amber-600/20 to-white/5" />
+                <PodiumCard label="2º puesto" player={tournamentResults[1]} active={finalStep >= 2} accent="from-slate-300/20 to-white/5" />
+                <PodiumCard label="Campeón" player={tournamentResults[0]} active={finalStep >= 3} accent="from-winner/20 to-white/5" />
+              </div>
+              <div className="mt-6 overflow-x-auto rounded-3xl border border-white/10">
+                <table className="w-full text-sm">
+                  <thead className="bg-white/5 text-left text-xs uppercase tracking-[.2em] text-slate-400"><tr><th className="p-3">Pos</th><th className="p-3">Jugador</th><th className="p-3">Pts anual</th></tr></thead>
+                  <tbody>
+                    {tournamentResults.map((row, index) => (
+                      <tr key={row.id || row.playerId} className="border-t border-white/10"><td className="p-3 font-black">{index + 1}</td><td className="p-3">{row.playerNickname}</td><td className="p-3 text-electric font-black">+{row.annualPoints}</td></tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button type="button" className="btn btn-primary" onClick={() => setShowAnnual(true)}>Siguiente: tabla anual</button>
+                <Link className="btn btn-ghost" to={`/season/${tournament.season}`}>Ver detalle completo</Link>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="mt-2 text-slate-300">Tabla anual actualizada.</p>
+              <div className="mt-4 overflow-x-auto rounded-3xl border border-white/10">
+                <table className="w-full text-sm">
+                  <thead className="bg-white/5 text-left text-xs uppercase tracking-[.2em] text-slate-400"><tr><th className="p-3">Rank</th><th className="p-3">Jugador</th><th className="p-3">Pts</th></tr></thead>
+                  <tbody>
+                    {ranking.map((row, index) => (
+                      <tr key={row.playerId} className="border-t border-white/10"><td className="p-3 font-black">#{index + 1}</td><td className="p-3">{row.nickname}</td><td className="p-3 text-electric font-black">{row.points}</td></tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
         </section>
       )}
 
