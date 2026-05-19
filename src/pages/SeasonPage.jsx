@@ -1,4 +1,4 @@
-import { BarChart3, Crown, Trophy } from 'lucide-react';
+import { BarChart3, Crown, Info, Trophy } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { LeaderboardTable } from '../components/LeaderboardTable';
@@ -11,6 +11,8 @@ export function SeasonPage() {
   const [tournaments, setTournaments] = useState([]);
   const [results, setResults] = useState([]);
   const [champions, setChampions] = useState({});
+  const [sortBy, setSortBy] = useState('points');
+  const [showInfo, setShowInfo] = useState(false);
 
   useEffect(() => {
     void (async () => {
@@ -35,12 +37,28 @@ export function SeasonPage() {
     <div className="space-y-6">
       <section className="glass rounded-[2rem] p-6 shadow-card">
         <p className="text-xs font-black uppercase tracking-[.3em] text-electric">Temporada</p>
-        <h1 className="text-5xl font-black">Ranking {season}</h1>
-        <p className="mt-2 text-slate-300">Puntos: campeón +10, subcampeón +7, semifinal +5, cuartos +3, octavos +1, victoria +2, goleador +2 y menos goles recibidos +1.</p>
+        <div className="flex items-start justify-between gap-3">
+          <h1 className="text-5xl font-black">Ranking {season}</h1>
+          <button type="button" className="rounded-full bg-white/10 p-2 text-slate-200 transition hover:bg-white/20" onClick={() => setShowInfo((value) => !value)} aria-label="Información de puntaje">
+            <Info className="h-4 w-4" />
+          </button>
+        </div>
+        <p className="mt-2 text-slate-300">Orden por puntaje anual por defecto. Podés reordenar por goles, victorias o títulos desde la tabla.</p>
+        {showInfo && (
+          <div className="mt-3 rounded-2xl bg-white/5 p-4 text-sm text-slate-200">
+            <p className="font-bold">Cómo suma puntos el ranking anual</p>
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-slate-300">
+              <li>Campeón +10 · Subcampeón +7 · Semifinal +5 · Cuartos +3 · Octavos +1.</li>
+              <li>Cada victoria en partido cerrado suma +2.</li>
+              <li>Bono goleador del torneo +2 y mejor defensa (menos goles recibidos) +1.</li>
+              <li>Todos los puntos se acumulan por jugador permanente (playerId), no por equipo puntual.</li>
+            </ul>
+          </div>
+        )}
       </section>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
-        <LeaderboardTable rows={rows} />
+        <LeaderboardTable rows={rows} sortBy={sortBy} onSortChange={setSortBy} />
         <aside className="space-y-4">
           <div className="glass rounded-3xl p-4 shadow-card">
             <h2 className="font-black"><Crown className="mr-2 inline text-pending" /> Campeones históricos</h2>

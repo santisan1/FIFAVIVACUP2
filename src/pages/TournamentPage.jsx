@@ -5,7 +5,7 @@ import { BracketView } from '../components/BracketView';
 import { DrawReveal } from '../components/DrawReveal';
 import { ScorersTable } from '../components/ScorersTable';
 import { roundLabels } from '../lib/bracket';
-import { buildRanking, buildScorers, getPlayer, getTournament, listFeed, listMatches, listTournamentPlayers } from '../lib/firestore';
+import { buildRanking, buildScorers, getPlayer, getTournament, listFeed, listMatches, listTournamentPlayers, listTournamentResultsBySeason } from '../lib/firestore';
 
 export function TournamentPage() {
   const { id = '' } = useParams();
@@ -17,18 +17,21 @@ export function TournamentPage() {
   const [feed, setFeed] = useState([]);
   const [champion, setChampion] = useState('');
   const [participants, setParticipants] = useState([]);
+  const [tournamentResults, setTournamentResults] = useState([]);
+  const [finalStep, setFinalStep] = useState(0);
 
   useEffect(() => {
     setLoading(true);
     void (async () => {
       const t = await getTournament(id);
       setTournament(t);
-      const [matchRows, scorerRows, feedRows, rankingRows, participantRows] = await Promise.all([listMatches(id), buildScorers(id), listFeed(id), t ? buildRanking(t.season) : Promise.resolve([]), listTournamentPlayers(id)]);
+      const [matchRows, scorerRows, feedRows, rankingRows, participantRows, seasonResults] = await Promise.all([listMatches(id), buildScorers(id), listFeed(id), t ? buildRanking(t.season) : Promise.resolve([]), listTournamentPlayers(id), t ? listTournamentResultsBySeason(t.season) : Promise.resolve([])]);
       setMatches(matchRows);
       setScorers(scorerRows);
       setFeed(feedRows);
       setRanking(rankingRows.slice(0, 5));
       setParticipants(participantRows);
+      setTournamentResults(seasonResults.filter((result) => result.tournamentId === id));
       if (t?.championPlayerId) setChampion((await getPlayer(t.championPlayerId))?.nickname ?? 'Campeón');
     })().finally(() => setLoading(false));
   }, [id]);
@@ -71,6 +74,16 @@ export function TournamentPage() {
           <Panel title="Feed narrativo">{feed.length ? feed.map((event) => <p key={event.id} className="rounded-2xl bg-white/5 p-3 text-sm text-slate-200">{event.text}</p>) : <Empty text="La historia empieza con el sorteo." />}</Panel>
         </aside>
       </div>
+    </div>
+  );
+}
+
+function PodiumCard({ label, player, active, accent }) {
+  return (
+    <div className={`rounded-3xl border border-white/10 bg-gradient-to-b p-4 transition duration-700 ${accent} ${active ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-20'}`}>
+      <p className="text-xs uppercase tracking-[.25em] text-slate-300">{label}</p>
+      <p className="mt-2 text-2xl font-black">{player?.playerNickname ?? '...'}</p>
+      <p className="text-sm text-slate-300">{player ? `${player.annualPoints} pts · ${player.placement}` : 'Esperando reveal...'}</p>
     </div>
   );
 }
