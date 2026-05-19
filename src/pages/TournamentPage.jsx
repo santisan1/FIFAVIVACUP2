@@ -3,38 +3,69 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { BracketView } from '../components/BracketView';
 import { DrawReveal } from '../components/DrawReveal';
-import { ScorersTable } from '../components/ScorersTable';
 import { roundLabels } from '../lib/bracket';
-import { buildRanking, buildScorers, getPlayer, getTournament, listFeed, listMatches, listTournamentPlayers, listTournamentResultsBySeason } from '../lib/firestore';
+import { buildRanking, getPlayer, getTournament, listFeed, listMatches, listTournamentPlayers, listTournamentResultsBySeason } from '../lib/firestore';
 
 export function TournamentPage() {
   const { id = '' } = useParams();
   const [loading, setLoading] = useState(true);
   const [tournament, setTournament] = useState(null);
   const [matches, setMatches] = useState([]);
-  const [scorers, setScorers] = useState([]);
   const [ranking, setRanking] = useState([]);
   const [feed, setFeed] = useState([]);
   const [champion, setChampion] = useState('');
   const [participants, setParticipants] = useState([]);
   const [tournamentResults, setTournamentResults] = useState([]);
   const [finalStep, setFinalStep] = useState(0);
+  const [showAnnual, setShowAnnual] = useState(false);
+
+  async function refreshTournamentData({ showLoader = false } = {}) {
+    if (showLoader) setLoading(true);
+    const t = await getTournament(id);
+    setTournament(t);
+    const [matchRows, feedRows, rankingRows, participantRows, seasonResults] = await Promise.all([listMatches(id), listFeed(id), t ? buildRanking(t.season) : Promise.resolve([]), listTournamentPlayers(id), t ? listTournamentResultsBySeason(t.season) : Promise.resolve([])]);
+    setMatches(matchRows);
+    setFeed(feedRows);
+    setRanking(rankingRows.slice(0, 5));
+    setParticipants(participantRows);
+    setTournamentResults(seasonResults.filter((result) => result.tournamentId === id));
+    if (t?.championPlayerId) setChampion((await getPlayer(t.championPlayerId))?.nickname ?? 'Campeón');
+    else setChampion('');
+    if (showLoader) setLoading(false);
+  }
 
   useEffect(() => {
-    setLoading(true);
-    void (async () => {
-      const t = await getTournament(id);
-      setTournament(t);
-      const [matchRows, scorerRows, feedRows, rankingRows, participantRows, seasonResults] = await Promise.all([listMatches(id), buildScorers(id), listFeed(id), t ? buildRanking(t.season) : Promise.resolve([]), listTournamentPlayers(id), t ? listTournamentResultsBySeason(t.season) : Promise.resolve([])]);
-      setMatches(matchRows);
-      setScorers(scorerRows);
-      setFeed(feedRows);
-      setRanking(rankingRows.slice(0, 5));
-      setParticipants(participantRows);
-      setTournamentResults(seasonResults.filter((result) => result.tournamentId === id));
-      if (t?.championPlayerId) setChampion((await getPlayer(t.championPlayerId))?.nickname ?? 'Campeón');
-    })().finally(() => setLoading(false));
+    void refreshTournamentData({ showLoader: true });
   }, [id]);
+
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      void refreshTournamentData();
+    }, 4000);
+    return () => clearInterval(intervalId);
+  }, [id]);
+
+  useEffect(() => {
+    if (tournament?.status !== 'finished') {
+      setFinalStep(0);
+      setShowAnnual(false);
+      return;
+    }
+    setFinalStep(0);
+    setShowAnnual(false);
+    const timers = [1200, 2600, 4200].map((time, index) => setTimeout(() => setFinalStep(index + 1), time));
+    return () => timers.forEach(clearTimeout);
+  }, [tournament?.status, id]);
+
+  useEffect(() => {
+    if (tournament?.status !== 'finished' || tournamentResults.length > 0 || !tournament?.season) return;
+    const refreshId = setTimeout(() => {
+      void listTournamentResultsBySeason(tournament.season).then((seasonResults) => {
+        setTournamentResults(seasonResults.filter((result) => result.tournamentId === id));
+      });
+    }, 1500);
+    return () => clearTimeout(refreshId);
+  }, [tournament?.status, tournament?.season, tournamentResults.length, id]);
 
   const pending = useMemo(() => matches.filter((match) => match.status !== 'finished' && match.playerAId && match.playerBId).slice(0, 5), [matches]);
   const latest = useMemo(() => matches.filter((match) => match.status === 'finished').slice(-5).reverse(), [matches]);
@@ -64,12 +95,55 @@ export function TournamentPage() {
         </section>
       )}
 
+      {tournament.status === 'finished' && (
+        <section className="glass rounded-3xl p-6 shadow-card">
+          <h2 className="text-3xl font-black">🏆 Show final</h2>
+          {!showAnnual ? (
+            <>
+              <p className="mt-2 text-slate-300">Revelando podio y tabla del torneo.</p>
+              <div className="mt-5 grid gap-3 md:grid-cols-3">
+                <PodiumCard label="3º puesto" player={tournamentResults[2]} active={finalStep >= 1} accent="from-amber-600/20 to-white/5" />
+                <PodiumCard label="2º puesto" player={tournamentResults[1]} active={finalStep >= 2} accent="from-slate-300/20 to-white/5" />
+                <PodiumCard label="Campeón" player={tournamentResults[0]} active={finalStep >= 3} accent="from-winner/20 to-white/5" />
+              </div>
+              <div className="mt-6 overflow-x-auto rounded-3xl border border-white/10">
+                <table className="w-full text-sm">
+                  <thead className="bg-white/5 text-left text-xs uppercase tracking-[.2em] text-slate-400"><tr><th className="p-3">Pos</th><th className="p-3">Jugador</th><th className="p-3">Pts anual</th></tr></thead>
+                  <tbody>
+                    {tournamentResults.map((row, index) => (
+                      <tr key={row.id || row.playerId} className="border-t border-white/10"><td className="p-3 font-black">{index + 1}</td><td className="p-3">{row.playerNickname}</td><td className="p-3 text-electric font-black">+{row.annualPoints}</td></tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button type="button" className="btn btn-primary" onClick={() => setShowAnnual(true)}>Siguiente: tabla anual</button>
+                <Link className="btn btn-ghost" to={`/season/${tournament.season}`}>Ver detalle completo</Link>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="mt-2 text-slate-300">Tabla anual actualizada.</p>
+              <div className="mt-4 overflow-x-auto rounded-3xl border border-white/10">
+                <table className="w-full text-sm">
+                  <thead className="bg-white/5 text-left text-xs uppercase tracking-[.2em] text-slate-400"><tr><th className="p-3">Rank</th><th className="p-3">Jugador</th><th className="p-3">Pts</th></tr></thead>
+                  <tbody>
+                    {ranking.map((row, index) => (
+                      <tr key={row.playerId} className="border-t border-white/10"><td className="p-3 font-black">#{index + 1}</td><td className="p-3">{row.nickname}</td><td className="p-3 text-electric font-black">{row.points}</td></tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </section>
+      )}
+
       <div className="grid gap-6 xl:grid-cols-[1fr_380px]">
         <BracketView matches={matches} />
         <aside className="space-y-5">
           <Panel title="Próximos partidos">{pending.length ? pending.map((match) => <MiniMatch key={match.id} match={match} />) : <Empty text="No hay partidos pendientes listos." />}</Panel>
           <Panel title="Últimos resultados">{latest.length ? latest.map((match) => <MiniMatch key={match.id} match={match} result />) : <Empty text="Todavía no hay resultados." />}</Panel>
-          <Panel title="Goleadores"><ScorersTable rows={scorers.slice(0, 5)} /></Panel>
           <Panel title="Ranking corto">{ranking.length ? ranking.map((row, index) => <div key={row.playerId} className="flex items-center justify-between rounded-2xl bg-white/5 p-3 text-sm"><span>#{index + 1} {row.nickname}</span><b className="text-electric">{row.points} pts</b></div>) : <Empty text="Todavía no hay puntos en el ranking." />}</Panel>
           <Panel title="Feed narrativo">{feed.length ? feed.map((event) => <p key={event.id} className="rounded-2xl bg-white/5 p-3 text-sm text-slate-200">{event.text}</p>) : <Empty text="La historia empieza con el sorteo." />}</Panel>
         </aside>

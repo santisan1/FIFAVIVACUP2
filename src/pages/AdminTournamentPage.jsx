@@ -1,12 +1,11 @@
 import { Copy, Dices, Link as LinkIcon, Monitor, Save, Swords, Trash2, Trophy, UsersRound } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { AdminLayout } from '../components/AdminLayout';
 import { BracketView } from '../components/BracketView';
 import { DrawReveal } from '../components/DrawReveal';
-import { ScorersTable } from '../components/ScorersTable';
 import { roundLabels } from '../lib/bracket';
-import { addTournamentPlayer, buildScorers, closeMatch, getTournament, listMatches, listPlayers, listTournamentPlayers, removeTournamentPlayer, runDraw, updateMatchPlayers, updateTournamentPlayerTeam } from '../lib/firestore';
+import { addTournamentPlayer, closeMatch, getTournament, listMatches, listPlayers, listTournamentPlayers, removeTournamentPlayer, runDraw, updateMatchPlayers, updateTournamentPlayerTeam } from '../lib/firestore';
 import { allPlayerLinksMessage, magicLinkForPlayer, whatsappMessageForPlayer } from '../lib/magicLinks';
 
 const setupTabs = ['Resumen', 'Participantes', 'Sala', 'Sorteo'];
@@ -29,11 +28,11 @@ function uniquePlayersForPicker(players) {
 
 export function AdminTournamentPage() {
   const { id = '' } = useParams();
+  const navigate = useNavigate();
   const [tournament, setTournament] = useState(null);
   const [players, setPlayers] = useState([]);
   const [parts, setParts] = useState([]);
   const [matches, setMatches] = useState([]);
-  const [scorers, setScorers] = useState([]);
   const [activeTab, setActiveTab] = useState('Participantes');
   const [selectedMatch, setSelectedMatch] = useState(null);
   const [selectedPlayerId, setSelectedPlayerId] = useState('');
@@ -46,12 +45,11 @@ export function AdminTournamentPage() {
   const [copied, setCopied] = useState('');
 
   const refresh = async () => {
-    const [t, playerRows, participantRows, matchRows, scorerRows] = await Promise.all([getTournament(id), listPlayers(), listTournamentPlayers(id), listMatches(id), buildScorers(id)]);
+    const [t, playerRows, participantRows, matchRows] = await Promise.all([getTournament(id), listPlayers(), listTournamentPlayers(id), listMatches(id)]);
     setTournament(t);
     setPlayers(playerRows);
     setParts(participantRows);
     setMatches(matchRows);
-    setScorers(scorerRows);
     setTeamEdits(Object.fromEntries(participantRows.map((part) => [part.id, part.teamName || ''])));
     setScoreDrafts((current) => Object.fromEntries(matchRows.map((match) => [match.id, current[match.id] ?? { scoreA: match.scoreA ?? '', scoreB: match.scoreB ?? '' }])));
   };
@@ -139,6 +137,11 @@ export function AdminTournamentPage() {
       if (match.round === 'FINAL' && !window.confirm('¿Cerrar la final y coronar campeón? Esto guarda tournamentResults por playerId y actualiza el ranking anual.')) return;
       await closeMatch(match, Number(draft.scoreA), Number(draft.scoreB), []);
       await refresh();
+      if (match.round === 'FINAL') {
+        await notify('Final cerrada. Te llevamos al torneo público para ver show final + tablas.');
+        navigate(`/tournament/${id}`);
+        return;
+      }
       await notify('Resultado cerrado. El ranking anual acumula por playerId.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo cerrar el partido.');
@@ -172,7 +175,7 @@ export function AdminTournamentPage() {
           {tabs.map((tab) => <button key={tab} className={`btn ${activeTab === tab ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setActiveTab(tab)}>{tab === 'Resultados' && <Swords className="h-4 w-4" />} {tab === 'Resumen' && <Trophy className="h-4 w-4" />} {tab}</button>)}
         </nav>
 
-        {activeTab === 'Resumen' && <SummaryTab parts={parts} readyMatches={readyMatches} finishedMatches={finishedMatches} scorers={scorers} setActiveTab={setActiveTab} />}
+        {activeTab === 'Resumen' && <SummaryTab parts={parts} readyMatches={readyMatches} finishedMatches={finishedMatches} setActiveTab={setActiveTab} />}
         {activeTab === 'Participantes' && <ParticipantsTab available={available} selectedPlayerId={selectedPlayerId} setSelectedPlayerId={setSelectedPlayerId} teamDraft={teamDraft} setTeamDraft={setTeamDraft} selectedPlayer={selectedPlayer} participants={participants} teamEdits={teamEdits} setTeamEdits={setTeamEdits} addParticipant={handleAddParticipant} saveParticipantTeam={saveParticipantTeam} refresh={refresh} matches={matches} />}
         {activeTab === 'Sorteo' && <DrawReveal participants={participants} />}
         {activeTab === 'Bracket' && <section className="space-y-4"><BracketView matches={matches} onMatchClick={setSelectedMatch} admin />{matches.length === 0 && <Empty text="Confirmá 16 participantes y sorteá para crear el bracket." />}</section>}
@@ -185,8 +188,8 @@ export function AdminTournamentPage() {
   );
 }
 
-function SummaryTab({ parts, readyMatches, finishedMatches, scorers, setActiveTab }) {
-  return <div className="grid gap-5 lg:grid-cols-[1fr_360px]"><section className="glass rounded-3xl p-5 shadow-card"><h2 className="text-2xl font-black">Resumen operativo</h2><div className="mt-4 grid gap-3 md:grid-cols-4"><Stat label="Participantes" value={`${parts.length}/16`} /><Stat label="Listos" value={readyMatches.length} /><Stat label="Cerrados" value={finishedMatches.length} /><Stat label="Goleadores" value={scorers.length} /></div><div className="mt-5 flex flex-wrap gap-2"><button className="btn btn-primary" onClick={() => setActiveTab('Participantes')}>Participantes de este torneo</button><button className="btn btn-ghost" onClick={() => setActiveTab('Links')}>Magic links de perfiles</button><button className="btn btn-ghost" onClick={() => setActiveTab('Resultados')}>Cargar resultados</button></div></section><section className="glass rounded-3xl p-5 shadow-card"><h2 className="font-black">Regla anual</h2><p className="mt-3 text-sm text-slate-300">Los puntos se acumulan por playerId. El equipo se guarda en tournamentPlayers y tournamentResults solo como contexto del torneo.</p></section></div>;
+function SummaryTab({ parts, readyMatches, finishedMatches, setActiveTab }) {
+  return <div className="grid gap-5 lg:grid-cols-[1fr_360px]"><section className="glass rounded-3xl p-5 shadow-card"><h2 className="text-2xl font-black">Resumen operativo</h2><div className="mt-4 grid gap-3 md:grid-cols-3"><Stat label="Participantes" value={`${parts.length}/16`} /><Stat label="Listos" value={readyMatches.length} /><Stat label="Cerrados" value={finishedMatches.length} /></div><div className="mt-5 flex flex-wrap gap-2"><button className="btn btn-primary" onClick={() => setActiveTab('Participantes')}>Participantes de este torneo</button><button className="btn btn-ghost" onClick={() => setActiveTab('Links')}>Magic links de perfiles</button><button className="btn btn-ghost" onClick={() => setActiveTab('Resultados')}>Cargar resultados</button></div></section><section className="glass rounded-3xl p-5 shadow-card"><h2 className="font-black">Regla anual</h2><p className="mt-3 text-sm text-slate-300">Los puntos se acumulan por playerId. El equipo se guarda en tournamentPlayers y tournamentResults solo como contexto del torneo.</p></section></div>;
 }
 
 function ParticipantsTab({ available, selectedPlayerId, setSelectedPlayerId, teamDraft, setTeamDraft, selectedPlayer, participants, teamEdits, setTeamEdits, addParticipant, saveParticipantTeam, refresh, matches }) {
