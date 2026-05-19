@@ -1,6 +1,6 @@
 import { Copy, Dices, Link as LinkIcon, Monitor, Save, Swords, Trash2, Trophy, UsersRound } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { AdminLayout } from '../components/AdminLayout';
 import { BracketView } from '../components/BracketView';
 import { DrawReveal } from '../components/DrawReveal';
@@ -29,6 +29,7 @@ function uniquePlayersForPicker(players) {
 
 export function AdminTournamentPage() {
   const { id = '' } = useParams();
+  const navigate = useNavigate();
   const [tournament, setTournament] = useState(null);
   const [players, setPlayers] = useState([]);
   const [parts, setParts] = useState([]);
@@ -139,6 +140,11 @@ export function AdminTournamentPage() {
       if (match.round === 'FINAL' && !window.confirm('¿Cerrar la final y coronar campeón? Esto guarda tournamentResults por playerId y actualiza el ranking anual.')) return;
       await closeMatch(match, Number(draft.scoreA), Number(draft.scoreB), []);
       await refresh();
+      if (match.round === 'FINAL') {
+        await notify('Final cerrada. Te llevamos al torneo público para ver show final + tablas.');
+        navigate(`/tournament/${id}`);
+        return;
+      }
       await notify('Resultado cerrado. El ranking anual acumula por playerId.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo cerrar el partido.');

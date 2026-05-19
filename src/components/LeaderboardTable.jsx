@@ -2,6 +2,7 @@ const SORT_OPTIONS = [
   { key: 'points', label: 'Pts' },
   { key: 'goalsFor', label: 'Goles +' },
   { key: 'goalsAgainst', label: 'Goles -' },
+  { key: 'goalDiff', label: 'Dif' },
   { key: 'wins', label: 'Victorias' },
   { key: 'titles', label: 'Títulos' },
 ];
@@ -10,6 +11,7 @@ function sortRows(rows, sortBy) {
   const sorted = [...rows];
   sorted.sort((a, b) => {
     if (sortBy === 'goalsAgainst') return a.goalsAgainst - b.goalsAgainst || b.points - a.points;
+    if (sortBy === 'goalDiff') return ((b.goalsFor ?? 0) - (b.goalsAgainst ?? 0)) - ((a.goalsFor ?? 0) - (a.goalsAgainst ?? 0)) || b.points - a.points;
     return (b[sortBy] ?? 0) - (a[sortBy] ?? 0) || b.points - a.points || b.wins - a.wins;
   });
   return sorted;
@@ -38,6 +40,7 @@ export function LeaderboardTable({ rows, sortBy = 'points', onSortChange }) {
             {renderSortableHeader('Pts', 'points')}
             {renderSortableHeader('Goles +', 'goalsFor', 'hidden md:table-cell')}
             {renderSortableHeader('Goles -', 'goalsAgainst', 'hidden md:table-cell')}
+            {renderSortableHeader('Dif', 'goalDiff', 'hidden md:table-cell')}
             {renderSortableHeader('Victorias', 'wins', 'hidden md:table-cell')}
             {renderSortableHeader('Títulos', 'titles', 'hidden md:table-cell')}
           </tr>
@@ -50,6 +53,7 @@ export function LeaderboardTable({ rows, sortBy = 'points', onSortChange }) {
               <td className="p-4 text-2xl font-black text-electric">{row.points}</td>
               <td className="hidden p-4 text-slate-300 md:table-cell">{row.goalsFor}</td>
               <td className="hidden p-4 text-slate-300 md:table-cell">{row.goalsAgainst}</td>
+              <td className="hidden p-4 text-slate-300 md:table-cell">{(row.goalsFor ?? 0) - (row.goalsAgainst ?? 0)}</td>
               <td className="hidden p-4 text-slate-300 md:table-cell">{row.wins}</td>
               <td className="hidden p-4 text-slate-300 md:table-cell">{row.titles}</td>
             </tr>

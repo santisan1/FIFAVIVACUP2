@@ -21,20 +21,31 @@ export function TournamentPage() {
   const [finalStep, setFinalStep] = useState(0);
   const [showAnnual, setShowAnnual] = useState(false);
 
+  async function refreshTournamentData({ showLoader = false } = {}) {
+    if (showLoader) setLoading(true);
+    const t = await getTournament(id);
+    setTournament(t);
+    const [matchRows, scorerRows, feedRows, rankingRows, participantRows, seasonResults] = await Promise.all([listMatches(id), buildScorers(id), listFeed(id), t ? buildRanking(t.season) : Promise.resolve([]), listTournamentPlayers(id), t ? listTournamentResultsBySeason(t.season) : Promise.resolve([])]);
+    setMatches(matchRows);
+    setScorers(scorerRows);
+    setFeed(feedRows);
+    setRanking(rankingRows.slice(0, 5));
+    setParticipants(participantRows);
+    setTournamentResults(seasonResults.filter((result) => result.tournamentId === id));
+    if (t?.championPlayerId) setChampion((await getPlayer(t.championPlayerId))?.nickname ?? 'Campeón');
+    else setChampion('');
+    if (showLoader) setLoading(false);
+  }
+
   useEffect(() => {
-    setLoading(true);
-    void (async () => {
-      const t = await getTournament(id);
-      setTournament(t);
-      const [matchRows, scorerRows, feedRows, rankingRows, participantRows, seasonResults] = await Promise.all([listMatches(id), buildScorers(id), listFeed(id), t ? buildRanking(t.season) : Promise.resolve([]), listTournamentPlayers(id), t ? listTournamentResultsBySeason(t.season) : Promise.resolve([])]);
-      setMatches(matchRows);
-      setScorers(scorerRows);
-      setFeed(feedRows);
-      setRanking(rankingRows.slice(0, 5));
-      setParticipants(participantRows);
-      setTournamentResults(seasonResults.filter((result) => result.tournamentId === id));
-      if (t?.championPlayerId) setChampion((await getPlayer(t.championPlayerId))?.nickname ?? 'Campeón');
-    })().finally(() => setLoading(false));
+    void refreshTournamentData({ showLoader: true });
+  }, [id]);
+
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      void refreshTournamentData();
+    }, 4000);
+    return () => clearInterval(intervalId);
   }, [id]);
 
   useEffect(() => {
