@@ -1,1 +1,1 @@
-export function LeaderboardPage(props) { return <div className="glass rounded-3xl p-6"><h1 className="text-2xl font-black">FIFA Viva Cup</h1><p className="text-slate-300">Pantalla legacy reemplazada por la nueva navegación principal.</p></div>; }
+export function LeaderboardPage(props) { return <div className="glass rounded-3xl p-6"><h1 className="text-2xl font-black">FIFAVIVA CUP</h1><p className="text-slate-300">Pantalla legacy reemplazada por la nueva navegación principal.</p></div>; }
