@@ -131,11 +131,32 @@ export function AdminTournamentPage() {
     try {
       setError('');
       const draft = scoreDrafts[match.id] ?? {};
+      const isTwoLegTie = tournament?.mode === 'two_legs' && match.round !== 'FINAL';
+      const isLeg2 = (match.leg ?? 1) === 2;
       if (!match.playerAId || !match.playerBId) throw new Error('No podés cerrar un partido sin ambos jugadores.');
       if (draft.scoreA === '' || draft.scoreB === '') throw new Error('Cargá ambos scores.');
-      if (Number(draft.scoreA) === Number(draft.scoreB)) throw new Error('No se permiten empates en eliminación directa.');
+      if (!isTwoLegTie && Number(draft.scoreA) === Number(draft.scoreB)) throw new Error('No se permiten empates en eliminación directa.');
       if (match.round === 'FINAL' && !window.confirm('¿Cerrar la final y coronar campeón? Esto guarda tournamentResults por playerId y actualiza el ranking anual.')) return;
-      await closeMatch(match, Number(draft.scoreA), Number(draft.scoreB), []);
+      const options = {};
+      if (isTwoLegTie && isLeg2) {
+        const leg1 = matches.find((item) => item.round === match.round && item.bracketPosition === match.bracketPosition && (item.leg ?? 1) === 1);
+        if (!leg1 || leg1.status !== 'finished') throw new Error('Primero cerrá la ida de esta serie.');
+        const aggA = Number(leg1.scoreA ?? 0) + Number(draft.scoreB);
+        const aggB = Number(leg1.scoreB ?? 0) + Number(draft.scoreA);
+        if (aggA === aggB) {
+          const penAInput = window.prompt(`Global empatado (${aggA}-${aggB}). Ingresá penales de ${leg1.playerAName}:`, '0');
+          const penBInput = window.prompt(`Global empatado (${aggA}-${aggB}). Ingresá penales de ${leg1.playerBName}:`, '0');
+          if (penAInput === null || penBInput === null) throw new Error('Cierre cancelado.');
+          const penaltyA = Number(penAInput);
+          const penaltyB = Number(penBInput);
+          if (!Number.isFinite(penaltyA) || !Number.isFinite(penaltyB) || penaltyA < 0 || penaltyB < 0 || penaltyA === penaltyB) {
+            throw new Error('Penales inválidos: cargá valores válidos y sin empate.');
+          }
+          options.penaltyA = penaltyA;
+          options.penaltyB = penaltyB;
+        }
+      }
+      await closeMatch(match, Number(draft.scoreA), Number(draft.scoreB), [], options);
       await refresh();
       if (match.round === 'FINAL') {
         await notify('Final cerrada. Te llevamos al torneo público para ver show final + tablas.');
