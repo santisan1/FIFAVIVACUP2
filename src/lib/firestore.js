@@ -432,8 +432,8 @@ export async function closeMatch(match, scoreA, scoreB, goals, options = {}) {
   batch.update(doc(db, 'matches', match.id), {
     scoreA,
     scoreB,
-    winnerId: winner.winnerId,
-    loserId: loser,
+    winnerId: winner.winnerId ?? null,
+    loserId: loser ?? null,
     penaltyA: options.penaltyA ?? null,
     penaltyB: options.penaltyB ?? null,
     status: 'finished',
