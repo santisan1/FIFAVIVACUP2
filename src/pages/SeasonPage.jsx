@@ -2,7 +2,7 @@ import { BarChart3, Crown, Info, Trophy } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { LeaderboardTable } from '../components/LeaderboardTable';
-import { buildRanking, getPlayer, listTournamentResultsBySeason, listTournaments } from '../lib/firestore';
+import { buildRanking, getPlayer, listMatches, listTournamentResultsBySeason, listTournaments } from '../lib/firestore';
 
 export function SeasonPage() {
   const { year = String(new Date().getFullYear()) } = useParams();
@@ -13,6 +13,8 @@ export function SeasonPage() {
   const [champions, setChampions] = useState({});
   const [sortBy, setSortBy] = useState('points');
   const [showInfo, setShowInfo] = useState(false);
+  const [selectedTournament, setSelectedTournament] = useState(null);
+  const [selectedMatches, setSelectedMatches] = useState([]);
 
   useEffect(() => {
     void (async () => {
@@ -25,6 +27,11 @@ export function SeasonPage() {
       setChampions(Object.fromEntries(championEntries));
     })();
   }, [season]);
+
+  async function openTournamentSummary(tournament) {
+    setSelectedTournament(tournament);
+    setSelectedMatches(await listMatches(tournament.id));
+  }
 
   const resultsByTournament = useMemo(() => {
     return results.reduce((acc, result) => {
@@ -79,16 +86,18 @@ export function SeasonPage() {
         <h2 className="text-xl font-black"><Trophy className="mr-2 inline h-5 w-5 text-electric" /> Puntos por torneo</h2>
         <div className="mt-4 grid gap-4 md:grid-cols-2">
           {tournaments.map((tournament) => (
-            <div key={tournament.id} className="rounded-3xl bg-white/5 p-4">
+            <button key={tournament.id} type="button" className="w-full rounded-3xl bg-white/5 p-4 text-left" onClick={() => openTournamentSummary(tournament)}>
               <div className="flex items-center justify-between gap-3"><b>{tournament.name}</b><span className="rounded-full bg-white/10 px-3 py-1 text-xs font-black">{tournament.status}</span></div>
               <div className="mt-3 space-y-2">
                 {(resultsByTournament[tournament.id] ?? []).slice(0, 6).map((result) => <div key={result.id} className="flex items-center justify-between rounded-2xl bg-black/20 p-2 text-sm"><span>{result.playerNickname}</span><b className="text-electric">+{result.annualPoints}</b></div>)}
                 {!resultsByTournament[tournament.id] && <p className="text-sm text-slate-400">Este torneo todavía no cerró.</p>}
               </div>
-            </div>
+            </button>
           ))}
         </div>
       </section>
+
+      {selectedTournament && <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4"><div className="glass w-full max-w-4xl rounded-[2rem] p-5 shadow-card"><div className="flex items-center justify-between"><h3 className="text-2xl font-black">Resumen: {selectedTournament.name}</h3><button className="btn btn-ghost" onClick={() => setSelectedTournament(null)}>Cerrar</button></div><p className="mt-2 text-sm text-slate-300">Modalidad: {selectedTournament.mode === 'two_legs' ? 'Ida y vuelta (final única)' : 'Solo ida'}.</p><div className="mt-4 grid gap-4 md:grid-cols-2"><div><h4 className="font-black">Cruces (resumen)</h4><div className="mt-2 space-y-2 max-h-72 overflow-auto">{selectedMatches.map((m) => <div key={m.id} className="rounded-2xl bg-white/5 p-2 text-sm"><b>{m.playerAName} {m.scoreA ?? '-'}-{m.scoreB ?? '-'} {m.playerBName}</b><p className="text-xs text-slate-400">{m.round} · {m.status}</p></div>)}</div></div><div><h4 className="font-black">Tabla del torneo</h4><div className="mt-2 space-y-2 max-h-72 overflow-auto">{(resultsByTournament[selectedTournament.id] ?? []).map((r, i) => <div key={r.id} className="flex items-center justify-between rounded-2xl bg-white/5 p-2 text-sm"><span>#{i + 1} {r.playerNickname}</span><b className="text-electric">+{r.annualPoints}</b></div>)}</div></div></div></div></div>}
     </div>
   );
 }

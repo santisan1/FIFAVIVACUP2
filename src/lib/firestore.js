@@ -117,11 +117,13 @@ export async function getActiveTournament() {
 
 export async function createTournament(input) {
   const ref = doc(collection(db, 'tournaments'));
+  const season = Number(new Date().getFullYear());
   await setDoc(ref, {
     name: input.name.trim(),
-    season: Number(input.season),
+    season,
     status: 'draft',
     format: 'knockout16',
+    mode: input.mode || 'single_leg',
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
