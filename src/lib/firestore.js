@@ -366,23 +366,76 @@ function addAnnualPointEvent(batch, { tournament, playerId, playerName, points, 
   });
 }
 
-export async function closeMatch(match, scoreA, scoreB, goals) {
+export async function closeMatch(match, scoreA, scoreB, goals, options = {}) {
   if (match.status === 'finished') throw new Error('Este partido ya estaba cerrado.');
   const [tournament, participants] = await Promise.all([getTournament(match.tournamentId), listTournamentPlayers(match.tournamentId)]);
   if (!tournament) throw new Error('No existe el torneo.');
-  const finalMatch = { ...match, scoreA, scoreB };
-  const winner = getWinner(finalMatch);
-  const winnerName = winner.winnerId === match.playerAId ? match.playerAName : match.playerBName;
-  const loserName = winner.loserId === match.playerAId ? match.playerAName : match.playerBName;
-  const winnerTeam = winner.winnerId === match.playerAId ? match.teamA : match.teamB;
-  const narrative = resultNarrative(finalMatch, winnerName, loserName);
+  const isTwoLegs = tournament.mode === 'two_legs' && match.round !== 'FINAL';
+  let winner;
+  let loser;
+
+  if (isTwoLegs) {
+    const sameTieMatches = (await listMatches(match.tournamentId)).filter((item) => item.round === match.round && item.bracketPosition === match.bracketPosition);
+    const leg1 = sameTieMatches.find((item) => (item.leg ?? 1) === 1) ?? match;
+    const leg2 = sameTieMatches.find((item) => (item.leg ?? 1) === 2);
+    const currentLeg = match.leg ?? 1;
+    if (currentLeg === 1) {
+      const existingLeg2 = leg2;
+      if (!existingLeg2) {
+        await addDoc(collection(db, 'matches'), {
+          tournamentId: match.tournamentId,
+          round: match.round,
+          matchNumber: match.matchNumber,
+          bracketPosition: match.bracketPosition,
+          leg: 2,
+          playerAId: match.playerBId,
+          playerBId: match.playerAId,
+          playerAName: match.playerBName,
+          playerBName: match.playerAName,
+          teamA: match.teamB,
+          teamB: match.teamA,
+          status: 'pending',
+          kickoffOrder: (match.kickoffOrder ?? 0) + 0.5,
+          createdAt: serverTimestamp(),
+        });
+      }
+      winner = { winnerId: null, loserId: null, winnerName: '', loserName: '' };
+    } else {
+      if (!leg1?.id || leg1.status !== 'finished') throw new Error('Primero cerrá el partido de ida para calcular el global.');
+      const aggA = Number(leg1.scoreA ?? 0) + Number(scoreB ?? 0);
+      const aggB = Number(leg1.scoreB ?? 0) + Number(scoreA ?? 0);
+      if (aggA === aggB) {
+        const penA = Number(options.penaltyA ?? -1);
+        const penB = Number(options.penaltyB ?? -1);
+        if (penA < 0 || penB < 0 || penA === penB) throw new Error('Global empatado: cargá penales (sin empate) en el modal.');
+        winner = penA > penB
+          ? { winnerId: leg1.playerAId, loserId: leg1.playerBId, winnerName: leg1.playerAName, loserName: leg1.playerBName }
+          : { winnerId: leg1.playerBId, loserId: leg1.playerAId, winnerName: leg1.playerBName, loserName: leg1.playerAName };
+      } else {
+        winner = aggA > aggB
+          ? { winnerId: leg1.playerAId, loserId: leg1.playerBId, winnerName: leg1.playerAName, loserName: leg1.playerBName }
+          : { winnerId: leg1.playerBId, loserId: leg1.playerAId, winnerName: leg1.playerBName, loserName: leg1.playerAName };
+      }
+      loser = winner.loserId;
+    }
+  } else {
+    const finalMatch = { ...match, scoreA, scoreB };
+    winner = getWinner(finalMatch);
+    loser = winner.loserId;
+  }
+  const winnerName = winner.winnerId ? (winner.winnerId === match.playerAId ? match.playerAName : match.playerBName) : '';
+  const loserName = winner.winnerId ? (winner.loserId === match.playerAId ? match.playerAName : match.playerBName) : '';
+  const winnerTeam = winner.winnerId ? (winner.winnerId === match.playerAId ? match.teamA : match.teamB) : '';
+  const narrative = winner.winnerId ? resultNarrative({ ...match, scoreA, scoreB }, winnerName, loserName) : `${match.playerAName} y ${match.playerBName} completaron la ida. Todo se define en la vuelta.`;
   const batch = writeBatch(db);
 
   batch.update(doc(db, 'matches', match.id), {
     scoreA,
     scoreB,
     winnerId: winner.winnerId,
-    loserId: winner.loserId,
+    loserId: loser,
+    penaltyA: options.penaltyA ?? null,
+    penaltyB: options.penaltyB ?? null,
     status: 'finished',
     narrative,
     finishedAt: serverTimestamp(),
@@ -392,13 +445,14 @@ export async function closeMatch(match, scoreA, scoreB, goals) {
     batch.set(doc(collection(db, 'goals')), { tournamentId: match.tournamentId, matchId: match.id, ...goal, createdAt: serverTimestamp() });
   });
 
-  const loserParticipant = participants.find((participant) => participant.playerId === winner.loserId);
+  const loserParticipant = participants.find((participant) => participant.playerId === loser);
   if (loserParticipant) batch.update(doc(db, 'tournamentPlayers', loserParticipant.id), { eliminated: true, eliminatedRound: match.round });
 
-  const playerUpdates = [
+  const shouldUpdateStats = !isTwoLegs || (isTwoLegs && (match.leg ?? 1) === 2);
+  const playerUpdates = shouldUpdateStats ? [
     { id: match.playerAId, won: winner.winnerId === match.playerAId, gf: scoreA, ga: scoreB, name: match.playerAName },
     { id: match.playerBId, won: winner.winnerId === match.playerBId, gf: scoreB, ga: scoreA, name: match.playerBName },
-  ];
+  ] : [];
   playerUpdates.filter((player) => player.id).forEach((player) => {
     batch.update(doc(db, 'players', player.id), {
       'statsGlobal.matches': increment(1),
@@ -413,13 +467,15 @@ export async function closeMatch(match, scoreA, scoreB, goals) {
   batch.update(doc(db, 'tournaments', match.tournamentId), {
     status: match.round === 'FINAL' ? 'finished' : 'active',
     updatedAt: serverTimestamp(),
-    ...(match.round === 'FINAL' ? { championPlayerId: winner.winnerId, runnerUpPlayerId: winner.loserId, finishedAt: serverTimestamp() } : {}),
+    ...(match.round === 'FINAL' ? { championPlayerId: winner.winnerId, runnerUpPlayerId: loser, finishedAt: serverTimestamp() } : {}),
   });
   await batch.commit();
 
-  const slot = nextSlot(match);
-  if (slot) await ensureNextMatch(match.tournamentId, slot, { id: winner.winnerId, name: winnerName, team: winnerTeam });
-  if (match.round === 'FINAL') await awardTournamentPoints(tournament, winner.winnerId, winner.loserId);
+  if (!isTwoLegs || (isTwoLegs && (match.leg ?? 1) === 2)) {
+    const slot = nextSlot(match);
+    if (slot && winner.winnerId) await ensureNextMatch(match.tournamentId, slot, { id: winner.winnerId, name: winnerName, team: winnerTeam });
+  }
+  if (match.round === 'FINAL') await awardTournamentPoints(tournament, winner.winnerId, loser);
 }
 
 function goalsFor(matches, playerId) {

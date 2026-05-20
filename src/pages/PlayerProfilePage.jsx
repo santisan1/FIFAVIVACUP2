@@ -13,8 +13,11 @@ export function PlayerProfilePage() {
   const [showIntro, setShowIntro] = useState(true);
 
   useEffect(() => {
+    const incomingToken = params.get('token');
+    if (incomingToken) localStorage.setItem(`fvc_magic_${playerId}`, incomingToken);
+    const persistedToken = incomingToken || localStorage.getItem(`fvc_magic_${playerId}`) || '';
     setLoading(true);
-    void getPlayerDashboard(playerId, params.get('token'))
+    void getPlayerDashboard(playerId, persistedToken)
       .then(setDashboard)
       .catch((error) => {
         if (import.meta.env.DEV) console.error('No se pudo cargar el magic link.', error);
