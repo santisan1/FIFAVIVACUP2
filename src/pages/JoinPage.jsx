@@ -17,8 +17,11 @@ export function JoinPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const incomingToken = params.get('token');
+    if (incomingToken) localStorage.setItem(`fvc_magic_${playerId}`, incomingToken);
+    const persistedToken = incomingToken || localStorage.getItem(`fvc_magic_${playerId}`) || '';
     setLoading(true);
-    void joinTournamentLobby(tournamentId, playerId, params.get('token'))
+    void joinTournamentLobby(tournamentId, playerId, persistedToken)
       .then(setDashboard)
       .catch((error) => {
         if (import.meta.env.DEV) console.error('No se pudo entrar a la sala.', error);
