@@ -131,11 +131,32 @@ export function AdminTournamentPage() {
     try {
       setError('');
       const draft = scoreDrafts[match.id] ?? {};
+      const isTwoLegTie = tournament?.mode === 'two_legs' && match.round !== 'FINAL';
+      const isLeg2 = (match.leg ?? 1) === 2;
       if (!match.playerAId || !match.playerBId) throw new Error('No podés cerrar un partido sin ambos jugadores.');
       if (draft.scoreA === '' || draft.scoreB === '') throw new Error('Cargá ambos scores.');
-      if (Number(draft.scoreA) === Number(draft.scoreB)) throw new Error('No se permiten empates en eliminación directa.');
+      if (!isTwoLegTie && Number(draft.scoreA) === Number(draft.scoreB)) throw new Error('No se permiten empates en eliminación directa.');
       if (match.round === 'FINAL' && !window.confirm('¿Cerrar la final y coronar campeón? Esto guarda tournamentResults por playerId y actualiza el ranking anual.')) return;
-      await closeMatch(match, Number(draft.scoreA), Number(draft.scoreB), []);
+      const options = {};
+      if (isTwoLegTie && isLeg2) {
+        const leg1 = matches.find((item) => item.round === match.round && item.bracketPosition === match.bracketPosition && (item.leg ?? 1) === 1);
+        if (!leg1 || leg1.status !== 'finished') throw new Error('Primero cerrá la ida de esta serie.');
+        const aggA = Number(leg1.scoreA ?? 0) + Number(draft.scoreB);
+        const aggB = Number(leg1.scoreB ?? 0) + Number(draft.scoreA);
+        if (aggA === aggB) {
+          const penAInput = window.prompt(`Global empatado (${aggA}-${aggB}). Ingresá penales de ${leg1.playerAName}:`, '0');
+          const penBInput = window.prompt(`Global empatado (${aggA}-${aggB}). Ingresá penales de ${leg1.playerBName}:`, '0');
+          if (penAInput === null || penBInput === null) throw new Error('Cierre cancelado.');
+          const penaltyA = Number(penAInput);
+          const penaltyB = Number(penBInput);
+          if (!Number.isFinite(penaltyA) || !Number.isFinite(penaltyB) || penaltyA < 0 || penaltyB < 0 || penaltyA === penaltyB) {
+            throw new Error('Penales inválidos: cargá valores válidos y sin empate.');
+          }
+          options.penaltyA = penaltyA;
+          options.penaltyB = penaltyB;
+        }
+      }
+      await closeMatch(match, Number(draft.scoreA), Number(draft.scoreB), [], options);
       await refresh();
       if (match.round === 'FINAL') {
         await notify('Final cerrada. Te llevamos al torneo público para ver show final + tablas.');
@@ -197,8 +218,45 @@ function ParticipantsTab({ available, selectedPlayerId, setSelectedPlayerId, tea
   return <div className="grid gap-5 lg:grid-cols-[420px_1fr]"><section className="glass rounded-3xl p-5 shadow-card"><p className="text-xs font-black uppercase tracking-[.3em] text-electric">Jugadores permanentes</p><h2 className="mt-2 text-2xl font-black">Agregar al torneo</h2><p className="mt-2 text-sm text-slate-400">Elegí un perfil histórico existente. No hay self-registration: el admin carga los 16 participantes.</p><div className="mt-4 space-y-3"><select className="input" value={selectedPlayerId} disabled={participants.length >= 16} onChange={(e) => setSelectedPlayerId(e.target.value)}><option value="">Seleccionar jugador permanente</option>{available.map((player) => <option key={player.id} value={player.id}>{player.nickname || player.name}</option>)}</select><label className="block"><span className="text-xs font-black uppercase tracking-[.2em] text-slate-400">Equipo en este torneo</span><input className="input mt-2" placeholder="Equipo usado en este torneo" value={teamDraft} disabled={!selectedPlayer || participants.length >= 16} onChange={(e) => setTeamDraft(e.target.value)} /></label><button className="btn btn-primary w-full" disabled={!selectedPlayer || participants.length >= 16} onClick={addParticipant}><UsersRound className="h-4 w-4" /> Agregar participante</button></div></section><section className="glass rounded-3xl p-5 shadow-card"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-[.3em] text-electric">Participantes de este torneo</p><h2 className="mt-2 text-2xl font-black">Equipo en este torneo ({participants.length}/16)</h2></div>{bracketStarted && <span className="rounded-full bg-pending/10 px-3 py-1 text-xs font-black text-pending">Bracket ya sorteado</span>}</div><p className="mt-2 text-sm text-slate-400">Editar este campo cambia el equipo del participante en este torneo.</p><div className="mt-4 space-y-3">{participants.map((part) => <div key={part.id} className="rounded-3xl bg-white/5 p-4"><div className="grid gap-3 xl:grid-cols-[1fr_1.2fr_auto]"><div><b>{part.playerNickname || part.playerName}</b><p className="text-xs text-slate-400">Seed {part.seed}</p></div><input className="input" value={teamEdits[part.id] ?? ''} onChange={(e) => setTeamEdits((current) => ({ ...current, [part.id]: e.target.value }))} placeholder="Equipo en este torneo" /><div className="flex flex-wrap gap-2"><button className="btn btn-ghost text-xs" onClick={() => saveParticipantTeam(part)}><Save className="h-3 w-3" /> Guardar equipo</button><button className="btn btn-ghost text-xs" disabled={bracketStarted} onClick={() => removeTournamentPlayer(part.id).then(refresh)}><Trash2 className="h-3 w-3 text-danger" /></button></div></div></div>)}{participants.length === 0 && <Empty text="Todavía no agregaste participantes." />}</div><p className="mt-4 text-xs text-slate-400">El sorteo se desbloquea al llegar a 16 participantes confirmados.</p></section></div>;
 }
 
+
+function groupMatchesForResults(matches) {
+  const grouped = new Map();
+  matches.forEach((match) => {
+    const isTwoLegTie = (match.leg ?? 1) >= 1 && match.round !== 'FINAL';
+    if (!isTwoLegTie) {
+      grouped.set(`single-${match.id}`, { type: 'single', matches: [match] });
+      return;
+    }
+    const key = `${match.round}-${match.bracketPosition ?? match.matchNumber}`;
+    const current = grouped.get(key) ?? { type: 'twoLegs', matches: [] };
+    current.matches.push(match);
+    grouped.set(key, current);
+  });
+  return Array.from(grouped.values()).map((group) => {
+    const ordered = [...group.matches].sort((a, b) => Number(a.leg ?? 1) - Number(b.leg ?? 1));
+    return { ...group, matches: ordered };
+  });
+}
+
 function ResultsTab({ matches, scoreDrafts, setDraft, closeQuickMatch, openModal }) {
-  return <section className="glass rounded-3xl p-5 shadow-card"><h2 className="text-2xl font-black">Resultados rápidos</h2><p className="text-sm text-slate-400">Los jugadores no editan resultados desde el magic link. El admin cierra partidos y guarda puntos por playerId.</p><div className="mt-4 grid gap-3 xl:grid-cols-2">{matches.map((match) => <div key={match.id} className="rounded-3xl bg-white/5 p-4"><p className="text-xs font-black uppercase tracking-[.2em] text-electric">{roundLabels[match.round]}{match.leg ? ` · ${match.leg === 1 ? 'Ida' : 'Vuelta'}` : ''}</p><div className="mt-3 grid grid-cols-[1fr_80px] items-center gap-3"><span><b>{match.playerAName || 'Jugador A'}</b><p className="text-xs text-slate-400">{match.teamA || 'Equipo pendiente'}</p></span><input className="input text-center text-2xl font-black" type="number" min="0" value={scoreDrafts[match.id]?.scoreA ?? ''} onChange={(e) => setDraft(match.id, 'scoreA', e.target.value)} /></div><div className="my-3 h-px bg-white/10" /><div className="grid grid-cols-[1fr_80px] items-center gap-3"><span><b>{match.playerBName || 'Jugador B'}</b><p className="text-xs text-slate-400">{match.teamB || 'Equipo pendiente'}</p></span><input className="input text-center text-2xl font-black" type="number" min="0" value={scoreDrafts[match.id]?.scoreB ?? ''} onChange={(e) => setDraft(match.id, 'scoreB', e.target.value)} /></div><div className="mt-4 grid gap-2 sm:grid-cols-2"><button className="btn btn-ghost text-xs" onClick={() => openModal(match)}>Editar cruce</button><button className="btn btn-primary text-xs" disabled={match.status === 'finished'} onClick={() => closeQuickMatch(match)}>{match.status === 'finished' ? 'Cerrado' : 'Cerrar partido'}</button></div></div>)}{matches.length === 0 && <Empty text="No hay partidos. Sorteá cruces después de confirmar los 16 equipos." />}</div></section>;
+  const groupedMatches = groupMatchesForResults(matches);
+  return <section className="glass rounded-3xl p-5 shadow-card"><h2 className="text-2xl font-black">Resultados rápidos</h2><p className="text-sm text-slate-400">Ahora podés cargar ida y vuelta en una misma card (4 casilleros) y ver el global antes de cerrar la serie.</p><div className="mt-4 grid gap-3 xl:grid-cols-2">{groupedMatches.map((group) => {
+    const leg1 = group.matches[0];
+    const leg2 = group.matches[1];
+    const leg1A = Number(scoreDrafts[leg1.id]?.scoreA ?? leg1.scoreA ?? 0);
+    const leg1B = Number(scoreDrafts[leg1.id]?.scoreB ?? leg1.scoreB ?? 0);
+    const leg2A = Number(scoreDrafts[leg2?.id]?.scoreA ?? leg2?.scoreA ?? 0);
+    const leg2B = Number(scoreDrafts[leg2?.id]?.scoreB ?? leg2?.scoreB ?? 0);
+    const aggregateA = leg1A + leg2B;
+    const aggregateB = leg1B + leg2A;
+    return <div key={`${leg1.round}-${leg1.bracketPosition}-${leg1.id}`} className="rounded-3xl bg-white/5 p-4"><p className="text-xs font-black uppercase tracking-[.2em] text-electric">{roundLabels[leg1.round]}{group.type === 'twoLegs' ? ' · Ida y vuelta' : ''}</p><p className="mt-1 text-sm"><b>{leg1.playerAName || 'Jugador A'}</b> vs <b>{leg1.playerBName || 'Jugador B'}</b></p>
+      <div className="mt-4 grid gap-2 sm:grid-cols-2">
+        <label className="rounded-2xl bg-black/20 p-3 text-xs font-black uppercase tracking-[.2em] text-slate-300">Ida<div className="mt-2 grid grid-cols-2 gap-2"><div><input className="input text-center text-xl font-black" type="number" min="0" value={scoreDrafts[leg1.id]?.scoreA ?? ''} onChange={(e) => setDraft(leg1.id, 'scoreA', e.target.value)} /><p className="mt-1 text-center text-[10px] font-bold normal-case tracking-normal text-slate-400">{leg1.playerAName || 'Jugador A'}</p></div><div><input className="input text-center text-xl font-black" type="number" min="0" value={scoreDrafts[leg1.id]?.scoreB ?? ''} onChange={(e) => setDraft(leg1.id, 'scoreB', e.target.value)} /><p className="mt-1 text-center text-[10px] font-bold normal-case tracking-normal text-slate-400">{leg1.playerBName || 'Jugador B'}</p></div></div></label>
+        <label className="rounded-2xl bg-black/20 p-3 text-xs font-black uppercase tracking-[.2em] text-slate-300">Vuelta<div className="mt-2 grid grid-cols-2 gap-2"><div><input className="input text-center text-xl font-black" type="number" min="0" disabled={!leg2} value={scoreDrafts[leg2?.id]?.scoreA ?? ''} onChange={(e) => leg2 && setDraft(leg2.id, 'scoreA', e.target.value)} /><p className="mt-1 text-center text-[10px] font-bold normal-case tracking-normal text-slate-400">{leg2?.playerAName || 'Jugador A'}</p></div><div><input className="input text-center text-xl font-black" type="number" min="0" disabled={!leg2} value={scoreDrafts[leg2?.id]?.scoreB ?? ''} onChange={(e) => leg2 && setDraft(leg2.id, 'scoreB', e.target.value)} /><p className="mt-1 text-center text-[10px] font-bold normal-case tracking-normal text-slate-400">{leg2?.playerBName || 'Jugador B'}</p></div></div></label>
+      </div>
+      {group.type === 'twoLegs' && <p className="mt-3 rounded-2xl bg-electric/10 px-3 py-2 text-sm font-black text-electric">Global parcial: {aggregateA} - {aggregateB}</p>}
+      <div className="mt-4 grid gap-2 sm:grid-cols-3"><button className="btn btn-ghost text-xs" onClick={() => openModal(leg1)}>Editar cruce</button><button className="btn btn-primary text-xs" disabled={leg1.status === 'finished'} onClick={() => closeQuickMatch(leg1)}>{leg1.status === 'finished' ? 'Ida cerrada' : 'Cerrar ida'}</button>{group.type === 'twoLegs' && leg2 && <button className="btn btn-primary text-xs" disabled={leg2.status === 'finished'} onClick={() => closeQuickMatch(leg2)}>{leg2.status === 'finished' ? 'Vuelta cerrada' : 'Cerrar vuelta'}</button>}</div></div>;
+  })}{matches.length === 0 && <Empty text="No hay partidos. Sorteá cruces después de confirmar los 16 equipos." />}</div></section>;
 }
 
 function LinksTab({ participants, copied, copyText }) {
