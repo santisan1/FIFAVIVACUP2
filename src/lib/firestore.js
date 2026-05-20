@@ -426,7 +426,7 @@ export async function closeMatch(match, scoreA, scoreB, goals, options = {}) {
   const winnerName = winner.winnerId ? (winner.winnerId === match.playerAId ? match.playerAName : match.playerBName) : '';
   const loserName = winner.winnerId ? (winner.loserId === match.playerAId ? match.playerAName : match.playerBName) : '';
   const winnerTeam = winner.winnerId ? (winner.winnerId === match.playerAId ? match.teamA : match.teamB) : '';
-  const narrative = resultNarrative(finalMatch, winnerName, loserName);
+  const narrative = winner.winnerId ? resultNarrative({ ...match, scoreA, scoreB }, winnerName, loserName) : `${match.playerAName} y ${match.playerBName} completaron la ida. Todo se define en la vuelta.`;
   const batch = writeBatch(db);
 
   batch.update(doc(db, 'matches', match.id), {

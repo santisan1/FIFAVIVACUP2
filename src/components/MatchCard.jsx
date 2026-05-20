@@ -11,9 +11,11 @@ export function MatchCard({ match, onClick, admin = false }) {
           <span>{roundLabels[match.round]}</span>
           <span className={done ? 'text-winner' : 'text-pending'}>{done ? <CheckCircle2 className="inline h-4 w-4" /> : <Clock className="inline h-4 w-4" />} {done ? 'cerrado' : 'pendiente'}</span>
         </div>
+        {match.leg && <p className="mb-2 text-xs font-black uppercase tracking-[.2em] text-electric">{match.leg === 1 ? 'Ida' : 'Vuelta'}</p>}
         <TeamLine name={match.playerAName || 'Por definir'} team={match.teamA} score={match.scoreA} winner={match.winnerId === match.playerAId} />
         <div className="my-2 h-px bg-white/10" />
         <TeamLine name={match.playerBName || 'Por definir'} team={match.teamB} score={match.scoreB} winner={match.winnerId === match.playerBId} />
+        {(match.penaltyA != null && match.penaltyB != null) && <p className="mt-2 text-xs text-slate-300">Penales: {match.penaltyA}-{match.penaltyB}</p>}
         {match.narrative && <p className="mt-3 rounded-2xl bg-white/5 p-3 text-xs text-slate-300">{match.narrative}</p>}
       </button>
       {admin && !done && <button className="btn btn-primary mt-4 w-full" onClick={onClick}><Gamepad2 className="h-4 w-4" /> Cargar resultado</button>}
