@@ -7,7 +7,7 @@ import { createTournament, getActiveTournament, listTournaments, seedDemoData } 
 export function AdminDashboardPage() {
   const navigate = useNavigate();
   const [name, setName] = useState(`Viva Cup ${new Date().toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })}`);
-  const [season, setSeason] = useState(new Date().getFullYear());
+  const [mode, setMode] = useState('single_leg');
   const [items, setItems] = useState([]);
   const [active, setActive] = useState(null);
   const [loadingSeed, setLoadingSeed] = useState(false);
@@ -21,7 +21,7 @@ export function AdminDashboardPage() {
   useEffect(() => { void refresh(); }, []);
 
   async function createNewTournament() {
-    const tournamentId = await createTournament({ name, season });
+    const tournamentId = await createTournament({ name, mode });
     navigate(`/admin/tournament/${tournamentId}`);
   }
 
@@ -60,10 +60,13 @@ export function AdminDashboardPage() {
           <section className="glass rounded-[2rem] p-5 shadow-card">
             <p className="text-xs font-black uppercase tracking-[.3em] text-electric">Paso 1</p>
             <h2 className="mt-2 text-3xl font-black">Crear torneo</h2>
-            <p className="mt-2 text-sm text-slate-300">Creá el torneo y entrá directo a cargar participantes.</p>
+            <p className="mt-2 text-sm text-slate-300">Definí nombre y modalidad. La temporada se toma automáticamente.</p>
             <div className="mt-5 space-y-3">
               <input className="input" value={name} onChange={(e) => setName(e.target.value)} />
-              <input className="input" type="number" value={season} onChange={(e) => setSeason(Number(e.target.value))} />
+              <select className="input" value={mode} onChange={(e) => setMode(e.target.value)}>
+                <option value="single_leg">Eliminación directa (solo ida)</option>
+                <option value="two_legs">Eliminación ida y vuelta (final a partido único)</option>
+              </select>
               <button className="btn btn-primary w-full" onClick={createNewTournament}><Plus className="h-4 w-4" /> Crear torneo</button>
             </div>
             <div className="mt-5 rounded-3xl border border-dashed border-white/10 p-4">

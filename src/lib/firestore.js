@@ -117,11 +117,13 @@ export async function getActiveTournament() {
 
 export async function createTournament(input) {
   const ref = doc(collection(db, 'tournaments'));
+  const season = Number(new Date().getFullYear());
   await setDoc(ref, {
     name: input.name.trim(),
-    season: Number(input.season),
+    season,
     status: 'draft',
     format: 'knockout16',
+    mode: input.mode || 'single_leg',
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
@@ -531,9 +533,8 @@ export async function buildScorers(tournamentId) {
   const goals = await listGoals(tournamentId);
   const rows = new Map();
   goals.forEach((goal) => {
-    const current = rows.get(goal.playerOwnerId) ?? { playerOwnerId: goal.playerOwnerId, playerName: goal.playerOwnerName || 'Jugador', goals: 0, scorers: [] };
+    const current = rows.get(goal.playerOwnerId) ?? { playerOwnerId: goal.playerOwnerId, playerName: goal.playerOwnerName || 'Jugador', goals: 0 };
     current.goals += goal.quantity || 1;
-    if (!current.scorers.includes(goal.scorerName)) current.scorers.push(goal.scorerName);
     rows.set(goal.playerOwnerId, current);
   });
   return [...rows.values()].sort((a, b) => b.goals - a.goals);

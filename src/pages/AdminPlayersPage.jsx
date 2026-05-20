@@ -91,12 +91,12 @@ export function AdminPlayersPage() {
         <section className="glass rounded-[2rem] p-5 shadow-card">
           <p className="text-xs font-black uppercase tracking-[.3em] text-electric">Jugadores permanentes</p>
           <h1 className="mt-2 text-3xl font-black">Perfiles históricos</h1>
-          <p className="mt-2 text-sm text-slate-300">Cada jugador es una entidad anual/histórica con accessToken propio. El equipo default ayuda a precargar torneos, pero el equipo oficial de cada evento vive en tournamentPlayers.</p>
+          <p className="mt-2 text-sm text-slate-300">Cada jugador es una entidad anual/histórica con accessToken propio. El equipo cambia torneo a torneo; el valor oficial de cada evento vive en tournamentPlayers.</p>
           {message && <p className="mt-4 rounded-2xl bg-winner/10 p-3 text-sm font-black text-winner">{message}</p>}
           <form className="mt-5 space-y-3" onSubmit={submitPlayer}>
             <input className="input" placeholder="Nombre real" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
             <input className="input" placeholder="Apodo visible" value={form.nickname} onChange={(e) => setForm({ ...form, nickname: e.target.value })} />
-            <input className="input" placeholder="Equipo default / último usado" value={form.currentTeam} onChange={(e) => setForm({ ...form, currentTeam: e.target.value })} />
+            <input className="input" placeholder="Equipo (referencia opcional)" value={form.currentTeam} onChange={(e) => setForm({ ...form, currentTeam: e.target.value })} />
             <input className="input" placeholder="Avatar URL opcional" value={form.avatarUrl} onChange={(e) => setForm({ ...form, avatarUrl: e.target.value })} />
             <button className="btn btn-primary w-full" type="submit"><Plus className="h-4 w-4" /> Crear jugador</button>
           </form>
@@ -125,14 +125,14 @@ export function AdminPlayersPage() {
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <b className="text-lg">{player.nickname}</b>
-                    <p className="text-sm text-slate-300">{player.name} · {player.currentTeam || 'Sin equipo default'}</p>
+                    <p className="text-sm text-slate-300">{player.name} · {player.currentTeam || 'Sin equipo de referencia'}</p>
                   </div>
                   <KeyRound className="h-5 w-5 text-electric" />
                 </div>
                 <div className="mt-4 grid gap-2">
                   <input className="input" value={draft.name} onChange={(e) => updateDraft(player.id, 'name', e.target.value)} placeholder="Nombre" />
                   <input className="input" value={draft.nickname} onChange={(e) => updateDraft(player.id, 'nickname', e.target.value)} placeholder="Apodo" />
-                  <input className="input" value={draft.currentTeam} onChange={(e) => updateDraft(player.id, 'currentTeam', e.target.value)} placeholder="Equipo default / último usado" />
+                  <input className="input" value={draft.currentTeam} onChange={(e) => updateDraft(player.id, 'currentTeam', e.target.value)} placeholder="Equipo (referencia opcional)" />
                 </div>
                 <p className="mt-3 break-all rounded-2xl bg-black/20 p-3 text-[11px] text-slate-400">{playerMagicLink(player)}</p>
                 <div className="mt-3 grid grid-cols-3 gap-2">
