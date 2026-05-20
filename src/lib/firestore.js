@@ -531,9 +531,8 @@ export async function buildScorers(tournamentId) {
   const goals = await listGoals(tournamentId);
   const rows = new Map();
   goals.forEach((goal) => {
-    const current = rows.get(goal.playerOwnerId) ?? { playerOwnerId: goal.playerOwnerId, playerName: goal.playerOwnerName || 'Jugador', goals: 0, scorers: [] };
+    const current = rows.get(goal.playerOwnerId) ?? { playerOwnerId: goal.playerOwnerId, playerName: goal.playerOwnerName || 'Jugador', goals: 0 };
     current.goals += goal.quantity || 1;
-    if (!current.scorers.includes(goal.scorerName)) current.scorers.push(goal.scorerName);
     rows.set(goal.playerOwnerId, current);
   });
   return [...rows.values()].sort((a, b) => b.goals - a.goals);
