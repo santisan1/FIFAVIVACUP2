@@ -15,7 +15,7 @@ export default function App() {
   return (
     <AppShell>
       <Routes>
-        <Route path="/" element={<HomePage />} />
+        <Route path="/" element={<HomeEntry />} />
         <Route path="/tournament/:id" element={<TournamentPage />} />
         <Route path="/screen/:id" element={<LiveNightPage />} />
         <Route path="/tv/:tournamentId" element={<LiveNightPage />} />
@@ -31,6 +31,13 @@ export default function App() {
       </Routes>
     </AppShell>
   );
+}
+
+function HomeEntry() {
+  const lastPlayerId = localStorage.getItem('fvc_last_player_id') || '';
+  const hasToken = lastPlayerId ? Boolean(localStorage.getItem(`fvc_magic_${lastPlayerId}`)) : false;
+  if (lastPlayerId && hasToken) return <Navigate to={`/player/${lastPlayerId}`} replace />;
+  return <HomePage />;
 }
 
 function NavigateToTournament() {

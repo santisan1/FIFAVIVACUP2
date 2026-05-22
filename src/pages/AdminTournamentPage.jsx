@@ -135,9 +135,21 @@ export function AdminTournamentPage() {
       const isLeg2 = (match.leg ?? 1) === 2;
       if (!match.playerAId || !match.playerBId) throw new Error('No podés cerrar un partido sin ambos jugadores.');
       if (draft.scoreA === '' || draft.scoreB === '') throw new Error('Cargá ambos scores.');
-      if (!isTwoLegTie && Number(draft.scoreA) === Number(draft.scoreB)) throw new Error('No se permiten empates en eliminación directa.');
+      if (!isTwoLegTie && match.round !== 'GROUP' && Number(draft.scoreA) === Number(draft.scoreB)) throw new Error('No se permiten empates en eliminación directa.');
       if (match.round === 'FINAL' && !window.confirm('¿Cerrar la final y coronar campeón? Esto guarda tournamentResults por playerId y actualiza el ranking anual.')) return;
       const options = {};
+      if (match.round === 'FINAL' && Number(draft.scoreA) === Number(draft.scoreB)) {
+        const penAInput = window.prompt(`Final empatada (${draft.scoreA}-${draft.scoreB}). Ingresá penales de ${match.playerAName}:`, '0');
+        const penBInput = window.prompt(`Final empatada (${draft.scoreA}-${draft.scoreB}). Ingresá penales de ${match.playerBName}:`, '0');
+        if (penAInput === null || penBInput === null) throw new Error('Cierre cancelado.');
+        const penaltyA = Number(penAInput);
+        const penaltyB = Number(penBInput);
+        if (!Number.isFinite(penaltyA) || !Number.isFinite(penaltyB) || penaltyA < 0 || penaltyB < 0 || penaltyA === penaltyB) {
+          throw new Error('Penales inválidos: cargá valores válidos y sin empate.');
+        }
+        options.penaltyA = penaltyA;
+        options.penaltyB = penaltyB;
+      }
       if (isTwoLegTie && isLeg2) {
         const leg1 = matches.find((item) => item.round === match.round && item.bracketPosition === match.bracketPosition && (item.leg ?? 1) === 1);
         if (!leg1 || leg1.status !== 'finished') throw new Error('Primero cerrá la ida de esta serie.');
@@ -249,13 +261,14 @@ function ResultsTab({ matches, scoreDrafts, setDraft, closeQuickMatch, openModal
     const leg2B = Number(scoreDrafts[leg2?.id]?.scoreB ?? leg2?.scoreB ?? 0);
     const aggregateA = leg1A + leg2B;
     const aggregateB = leg1B + leg2A;
-    return <div key={`${leg1.round}-${leg1.bracketPosition}-${leg1.id}`} className="rounded-3xl bg-white/5 p-4"><p className="text-xs font-black uppercase tracking-[.2em] text-electric">{roundLabels[leg1.round]}{group.type === 'twoLegs' ? ' · Ida y vuelta' : ''}</p><p className="mt-1 text-sm"><b>{leg1.playerAName || 'Jugador A'}</b> vs <b>{leg1.playerBName || 'Jugador B'}</b></p>
-      <div className="mt-4 grid gap-2 sm:grid-cols-2">
+    return <div key={`${leg1.round}-${leg1.bracketPosition}-${leg1.id}`} className="rounded-3xl bg-white/5 p-4"><p className="text-xs font-black uppercase tracking-[.2em] text-electric">{roundLabels[leg1.round]}{group.type === 'twoLegs' ? ' · Ida y vuelta' : leg1.round === 'FINAL' ? ' · Partido único' : ''}</p><p className="mt-1 text-sm"><b>{leg1.playerAName || 'Jugador A'}</b> vs <b>{leg1.playerBName || 'Jugador B'}</b></p>
+      {group.type === 'twoLegs' ? <div className="mt-4 grid gap-2 sm:grid-cols-2">
         <label className="rounded-2xl bg-black/20 p-3 text-xs font-black uppercase tracking-[.2em] text-slate-300">Ida<div className="mt-2 grid grid-cols-2 gap-2"><div><input className="input text-center text-xl font-black" type="number" min="0" value={scoreDrafts[leg1.id]?.scoreA ?? ''} onChange={(e) => setDraft(leg1.id, 'scoreA', e.target.value)} /><p className="mt-1 text-center text-[10px] font-bold normal-case tracking-normal text-slate-400">{leg1.playerAName || 'Jugador A'}</p></div><div><input className="input text-center text-xl font-black" type="number" min="0" value={scoreDrafts[leg1.id]?.scoreB ?? ''} onChange={(e) => setDraft(leg1.id, 'scoreB', e.target.value)} /><p className="mt-1 text-center text-[10px] font-bold normal-case tracking-normal text-slate-400">{leg1.playerBName || 'Jugador B'}</p></div></div></label>
         <label className="rounded-2xl bg-black/20 p-3 text-xs font-black uppercase tracking-[.2em] text-slate-300">Vuelta<div className="mt-2 grid grid-cols-2 gap-2"><div><input className="input text-center text-xl font-black" type="number" min="0" disabled={!leg2} value={scoreDrafts[leg2?.id]?.scoreA ?? ''} onChange={(e) => leg2 && setDraft(leg2.id, 'scoreA', e.target.value)} /><p className="mt-1 text-center text-[10px] font-bold normal-case tracking-normal text-slate-400">{leg2?.playerAName || 'Jugador A'}</p></div><div><input className="input text-center text-xl font-black" type="number" min="0" disabled={!leg2} value={scoreDrafts[leg2?.id]?.scoreB ?? ''} onChange={(e) => leg2 && setDraft(leg2.id, 'scoreB', e.target.value)} /><p className="mt-1 text-center text-[10px] font-bold normal-case tracking-normal text-slate-400">{leg2?.playerBName || 'Jugador B'}</p></div></div></label>
-      </div>
+      </div> : <label className="mt-4 block rounded-2xl bg-black/20 p-3 text-xs font-black uppercase tracking-[.2em] text-slate-300">{leg1.round === 'FINAL' ? 'Final a partido único' : 'Partido único'}<div className="mt-2 grid grid-cols-2 gap-2"><div><input className="input text-center text-xl font-black" type="number" min="0" value={scoreDrafts[leg1.id]?.scoreA ?? ''} onChange={(e) => setDraft(leg1.id, 'scoreA', e.target.value)} /><p className="mt-1 text-center text-[10px] font-bold normal-case tracking-normal text-slate-400">{leg1.playerAName || 'Jugador A'}</p></div><div><input className="input text-center text-xl font-black" type="number" min="0" value={scoreDrafts[leg1.id]?.scoreB ?? ''} onChange={(e) => setDraft(leg1.id, 'scoreB', e.target.value)} /><p className="mt-1 text-center text-[10px] font-bold normal-case tracking-normal text-slate-400">{leg1.playerBName || 'Jugador B'}</p></div></div></label>}
       {group.type === 'twoLegs' && <p className="mt-3 rounded-2xl bg-electric/10 px-3 py-2 text-sm font-black text-electric">Global parcial: {aggregateA} - {aggregateB}</p>}
-      <div className="mt-4 grid gap-2 sm:grid-cols-3"><button className="btn btn-ghost text-xs" onClick={() => openModal(leg1)}>Editar cruce</button><button className="btn btn-primary text-xs" disabled={leg1.status === 'finished'} onClick={() => closeQuickMatch(leg1)}>{leg1.status === 'finished' ? 'Ida cerrada' : 'Cerrar ida'}</button>{group.type === 'twoLegs' && leg2 && <button className="btn btn-primary text-xs" disabled={leg2.status === 'finished'} onClick={() => closeQuickMatch(leg2)}>{leg2.status === 'finished' ? 'Vuelta cerrada' : 'Cerrar vuelta'}</button>}</div></div>;
+      {leg1.round === 'FINAL' && <p className="mt-3 rounded-2xl bg-pending/10 px-3 py-2 text-xs font-bold text-pending">Si empatan, al cerrar se te van a pedir penales para definir campeón y disparar el show final + ranking.</p>}
+      <div className="mt-4 grid gap-2 sm:grid-cols-3"><button className="btn btn-ghost text-xs" onClick={() => openModal(leg1)}>Editar cruce</button><button className="btn btn-primary text-xs" disabled={leg1.status === 'finished'} onClick={() => closeQuickMatch(leg1)}>{group.type === 'twoLegs' ? (leg1.status === 'finished' ? 'Ida cerrada' : 'Cerrar ida') : (leg1.status === 'finished' ? 'Partido cerrado' : 'Cerrar partido')}</button>{group.type === 'twoLegs' && leg2 && <button className="btn btn-primary text-xs" disabled={leg2.status === 'finished'} onClick={() => closeQuickMatch(leg2)}>{leg2.status === 'finished' ? 'Vuelta cerrada' : 'Cerrar vuelta'}</button>}</div></div>;
   })}{matches.length === 0 && <Empty text="No hay partidos. Sorteá cruces después de confirmar los 16 equipos." />}</div></section>;
 }
 

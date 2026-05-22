@@ -18,7 +18,11 @@ export function PlayerProfilePage() {
     const persistedToken = incomingToken || localStorage.getItem(`fvc_magic_${playerId}`) || '';
     setLoading(true);
     void getPlayerDashboard(playerId, persistedToken)
-      .then(setDashboard)
+      .then((data) => {
+        if (data?.valid) localStorage.setItem('fvc_last_player_id', playerId);
+        if (data?.valid && data?.activeTournament?.id) localStorage.setItem(`fvc_last_tournament_${playerId}`, data.activeTournament.id);
+        setDashboard(data);
+      })
       .catch((error) => {
         if (import.meta.env.DEV) console.error('No se pudo cargar el magic link.', error);
         setDashboard({ valid: false, reason: 'No se pudo cargar Firestore. Revisá conexión o permisos.' });
@@ -30,7 +34,7 @@ export function PlayerProfilePage() {
   if (!dashboard?.valid) return <InvalidLink reason={dashboard?.reason} />;
   if (showIntro) return <SplashScreen onEnter={() => setShowIntro(false)} playerName={dashboard?.player?.nickname || dashboard?.player?.name} tournamentName={dashboard?.activeTournament?.name} />;
 
-  const { player, activeTournament, status, recentMatches, seasonPosition, results, season } = dashboard;
+  const { player, activeTournament, status, recentMatches, seasonPosition, results, tournaments = [], season } = dashboard;
   const stats = player.statsGlobal;
   const badges = badgesForPlayer({ titles: stats.titles, runnerUps: stats.runnerUps, goalsFor: stats.goalsFor, goalsAgainst: stats.goalsAgainst, wins: stats.wins, losses: stats.losses });
   const mainBadge = status.isChampion ? '🏆 Campeón' : badges[0];
@@ -76,13 +80,12 @@ export function PlayerProfilePage() {
         {status.isChampion && <p className="mt-3 rounded-2xl bg-pending/10 p-3 text-sm font-black text-pending"><Crown className="mr-2 inline h-4 w-4" /> Campeón de la noche. Modo leyenda activado.</p>}
       </section>
 
-      <section className="grid gap-4 md:grid-cols-3 xl:grid-cols-9">
-        {[['PJ', stats.matches], ['W', stats.wins], ['L', stats.losses], ['GF', stats.goalsFor], ['GC', stats.goalsAgainst], ['DIF', stats.goalsFor - stats.goalsAgainst], ['Títulos', stats.titles], ['Finales', stats.runnerUps], ['Pts', annualPoints]].map(([label, value]) => <StatCard key={label} label={label} value={value} />)}
-      </section>
-
       <section className="grid gap-5 lg:grid-cols-2">
-        <Panel title="Últimos partidos">{recentMatches.length === 0 ? <Empty text="Aún no hay partidos cerrados." /> : recentMatches.map((match) => <div key={match.id} className="rounded-2xl bg-white/5 p-3 text-sm"><b>{match.playerAName} {match.scoreA}-{match.scoreB} {match.playerBName}</b><p className={match.winnerId === player.id ? 'text-winner' : 'text-danger'}>{match.winnerId === player.id ? 'Victoria' : 'Derrota'} · {roundLabels[match.round]}</p></div>)}</Panel>
-        <Panel title="Ranking anual"><p className="text-xs text-slate-400">Acumula por jugador permanente, no por equipo ni por participación.</p><div className="mt-3 overflow-x-auto rounded-2xl border border-white/10"><table className="w-full text-sm"><thead className="bg-white/5 text-left text-xs uppercase tracking-[.2em] text-slate-400"><tr><th className="p-3">#</th><th className="p-3">Jugador</th><th className="p-3">Pts</th></tr></thead><tbody>{seasonPosition.top5.map((row, index) => <tr key={row.playerId} className={`border-t border-white/10 ${row.playerId === player.id ? 'bg-electric/10' : ''}`}><td className="p-3 font-black">{index + 1}</td><td className="p-3">{row.nickname}<p className="text-xs text-slate-400">{row.team || 'sin equipo'}</p></td><td className="p-3 font-black text-electric">{row.points}</td></tr>)}</tbody></table></div>{seasonPosition.pointsBehindAbove > 0 && <p className="mt-2 text-xs text-slate-400">Estás a {seasonPosition.pointsBehindAbove} pts del de arriba.</p>}</Panel>
+        <Panel title="Últimos partidos">{recentMatches.length === 0 ? <Empty text="Aún no hay partidos cerrados." /> : recentMatches.map((match) => {
+          const tournamentName = tournaments.find((tournament) => tournament.id === match.tournamentId)?.name || 'Torneo';
+          return <div key={match.id} className="rounded-2xl bg-white/5 p-3 text-sm"><b>{match.playerAName} {match.scoreA}-{match.scoreB} {match.playerBName}</b><p className={match.winnerId === player.id ? 'text-winner' : 'text-danger'}>{match.winnerId === player.id ? 'Victoria' : 'Derrota'} · {roundLabels[match.round]}</p><p className="text-xs text-slate-400">Torneo: {tournamentName}</p></div>;
+        })}</Panel>
+        <Panel title="Ranking anual"><p className="text-xs text-slate-400">Acumula por jugador permanente, no por equipo ni por participación.</p><p className="mt-2 rounded-xl bg-electric/10 px-3 py-2 text-xs text-electric">Tip celu: girá el teléfono a horizontal para ver más columnas. También podés deslizar la tabla hacia los costados.</p><div className="mt-3 overflow-x-auto rounded-2xl border border-white/10"><table className="w-full min-w-[420px] text-sm"><thead className="bg-white/5 text-left text-xs uppercase tracking-[.2em] text-slate-400"><tr><th className="p-3">#</th><th className="p-3">Jugador</th><th className="p-3">Pts</th></tr></thead><tbody>{seasonPosition.top5.map((row, index) => <tr key={row.playerId} className={`border-t border-white/10 ${row.playerId === player.id ? 'bg-electric/10' : ''}`}><td className="p-3 font-black">{index + 1}</td><td className="p-3">{row.nickname}<p className="text-xs text-slate-400">{row.team || 'sin equipo'}</p></td><td className="p-3 font-black text-electric">{row.points}</td></tr>)}</tbody></table></div>{seasonPosition.pointsBehindAbove > 0 && <p className="mt-2 text-xs text-slate-400">Estás a {seasonPosition.pointsBehindAbove} pts del de arriba.</p>}</Panel>
         <Panel title="Torneos jugados"><p className="text-xs text-slate-400">Historial de torneos cerrados con posición y puntos.</p>{results.length === 0 ? <Empty text="Todavía no hay torneos cerrados." /> : <div className="mt-3 overflow-x-auto rounded-2xl border border-white/10"><table className="w-full text-sm"><thead className="bg-white/5 text-left text-xs uppercase tracking-[.2em] text-slate-400"><tr><th className="p-3">Temporada</th><th className="p-3">Torneo</th><th className="p-3">Puesto</th><th className="p-3">Pts</th></tr></thead><tbody>{results.map((result) => <tr key={result.id} className="border-t border-white/10"><td className="p-3">{result.season}</td><td className="p-3">{result.tournamentName}</td><td className="p-3">{result.placement}</td><td className="p-3 font-black text-electric">+{result.annualPoints}</td></tr>)}</tbody></table></div>}</Panel>
         <Panel title="Badges"><div className="flex flex-wrap gap-2">{badges.map((badge) => <span key={badge} className="rounded-full border border-electric/30 bg-electric/10 px-3 py-2 text-xs font-black text-electric">{badge}</span>)}</div></Panel>
       </section>

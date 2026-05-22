@@ -308,15 +308,40 @@ export async function listFeed(tournamentId) {
 }
 
 export async function runDraw(tournamentId) {
-  const [players, existingMatches] = await Promise.all([listTournamentPlayers(tournamentId), listMatches(tournamentId)]);
+  const [players, existingMatches, tournament] = await Promise.all([listTournamentPlayers(tournamentId), listMatches(tournamentId), getTournament(tournamentId)]);
   if (existingMatches.length > 0) throw new Error('Este torneo ya tiene bracket sorteado.');
   if (players.length !== 16) throw new Error('El sorteo necesita exactamente 16 jugadores únicos.');
-  const matches = createInitialMatches(players, tournamentId);
+  const matches = createInitialMatches(players, tournamentId, tournament?.mode ?? 'single_leg');
   const batch = writeBatch(db);
   matches.forEach((match) => batch.set(doc(collection(db, 'matches')), { ...match, imageUrl: '', createdAt: serverTimestamp() }));
   batch.update(doc(db, 'tournaments', tournamentId), { status: 'draw', startedAt: serverTimestamp(), updatedAt: serverTimestamp() });
-  batch.set(doc(collection(db, 'feedEvents')), { tournamentId, text: 'El sorteo explotó la arena: los octavos ya están listos.', tone: 'epic', createdAt: serverTimestamp() });
+  batch.set(doc(collection(db, 'feedEvents')), { tournamentId, text: tournament?.mode === 'groups_16' ? 'Sorteo listo: 4 grupos de 4 y camino directo a cuartos.' : 'El sorteo explotó la arena: los octavos ya están listos.', tone: 'epic', createdAt: serverTimestamp() });
   await batch.commit();
+}
+
+function groupStandings(matches) {
+  const table = new Map();
+  matches.filter((m) => m.round === 'GROUP' && m.status === 'finished').forEach((m) => {
+    const sa = Number(m.scoreA ?? 0); const sb = Number(m.scoreB ?? 0);
+    const up = (id, name, team, gf, ga, pts) => {
+      const row = table.get(id) ?? { id, name, team, pts: 0, gf: 0, ga: 0, gd: 0 };
+      row.pts += pts; row.gf += gf; row.ga += ga; row.gd = row.gf - row.ga;
+      table.set(id, row);
+    };
+    up(m.playerAId, m.playerAName, m.teamA, sa, sb, sa === sb ? 1 : sa > sb ? 2 : 0);
+    up(m.playerBId, m.playerBName, m.teamB, sb, sa, sa === sb ? 1 : sb > sa ? 2 : 0);
+  });
+  const byGroup = new Map();
+  matches.filter((m) => m.round === 'GROUP').forEach((m) => {
+    const g = m.groupName || '?';
+    const current = byGroup.get(g) ?? new Set();
+    current.add(m.playerAId); current.add(m.playerBId);
+    byGroup.set(g, current);
+  });
+  return [...byGroup.entries()].reduce((acc, [g, ids]) => {
+    acc[g] = [...ids].map((id) => table.get(id) ?? { id, pts: 0, gf: 0, ga: 0, gd: 0 }).sort((a, b) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf);
+    return acc;
+  }, {});
 }
 
 export async function updateMatchPlayers(match, input) {
@@ -419,14 +444,19 @@ export async function closeMatch(match, scoreA, scoreB, goals, options = {}) {
       loser = winner.loserId;
     }
   } else {
-    const finalMatch = { ...match, scoreA, scoreB };
-    winner = getWinner(finalMatch);
-    loser = winner.loserId;
+    if (match.round === 'GROUP') {
+      winner = Number(scoreA) === Number(scoreB) ? { winnerId: null, loserId: null, winnerName: '', loserName: '' } : getWinner({ ...match, scoreA, scoreB });
+      loser = winner.loserId;
+    } else {
+      const finalMatch = { ...match, scoreA, scoreB };
+      winner = getWinner(finalMatch);
+      loser = winner.loserId;
+    }
   }
   const winnerName = winner.winnerId ? (winner.winnerId === match.playerAId ? match.playerAName : match.playerBName) : '';
   const loserName = winner.winnerId ? (winner.loserId === match.playerAId ? match.playerAName : match.playerBName) : '';
   const winnerTeam = winner.winnerId ? (winner.winnerId === match.playerAId ? match.teamA : match.teamB) : '';
-  const narrative = winner.winnerId ? resultNarrative({ ...match, scoreA, scoreB }, winnerName, loserName) : `${match.playerAName} y ${match.playerBName} completaron la ida. Todo se define en la vuelta.`;
+  const narrative = winner.winnerId ? resultNarrative({ ...match, scoreA, scoreB }, winnerName, loserName) : match.round === 'GROUP' ? `${match.playerAName} y ${match.playerBName} empataron ${scoreA}-${scoreB} en fase de grupos.` : `${match.playerAName} y ${match.playerBName} completaron la ida. Todo se define en la vuelta.`;
   const batch = writeBatch(db);
 
   batch.update(doc(db, 'matches', match.id), {
@@ -448,20 +478,22 @@ export async function closeMatch(match, scoreA, scoreB, goals, options = {}) {
   const loserParticipant = participants.find((participant) => participant.playerId === loser);
   if (loserParticipant) batch.update(doc(db, 'tournamentPlayers', loserParticipant.id), { eliminated: true, eliminatedRound: match.round });
 
-  const shouldUpdateStats = !isTwoLegs || (isTwoLegs && (match.leg ?? 1) === 2);
+  const shouldUpdateStats = true;
   const playerUpdates = shouldUpdateStats ? [
-    { id: match.playerAId, won: winner.winnerId === match.playerAId, gf: scoreA, ga: scoreB, name: match.playerAName },
-    { id: match.playerBId, won: winner.winnerId === match.playerBId, gf: scoreB, ga: scoreA, name: match.playerBName },
+    { id: match.playerAId, won: winner.winnerId === match.playerAId, drew: Number(scoreA) === Number(scoreB), gf: scoreA, ga: scoreB, name: match.playerAName },
+    { id: match.playerBId, won: winner.winnerId === match.playerBId, drew: Number(scoreA) === Number(scoreB), gf: scoreB, ga: scoreA, name: match.playerBName },
   ] : [];
   playerUpdates.filter((player) => player.id).forEach((player) => {
+    const annualPoints = player.drew ? 1 : (player.won ? 2 : 0);
     batch.update(doc(db, 'players', player.id), {
       'statsGlobal.matches': increment(1),
-      [`statsGlobal.${player.won ? 'wins' : 'losses'}`]: increment(1),
+      ...(!player.drew ? { [`statsGlobal.${player.won ? 'wins' : 'losses'}`]: increment(1) } : {}),
       'statsGlobal.goalsFor': increment(player.gf),
       'statsGlobal.goalsAgainst': increment(player.ga),
-      [`statsGlobal.annualPoints.${yearKey(tournament.season)}`]: increment(player.won ? 2 : 0),
+      [`statsGlobal.annualPoints.${yearKey(tournament.season)}`]: increment(annualPoints),
     });
-    if (player.won) addAnnualPointEvent(batch, { tournament, playerId: player.id, playerName: player.name, points: 2, reason: `win_${match.id}`, label: 'Victoria' });
+    if (player.won && !player.drew) addAnnualPointEvent(batch, { tournament, playerId: player.id, playerName: player.name, points: 2, reason: `win_${match.id}`, label: 'Victoria' });
+    if (player.drew) addAnnualPointEvent(batch, { tournament, playerId: player.id, playerName: player.name, points: 1, reason: `draw_${match.id}`, label: 'Empate' });
   });
 
   batch.update(doc(db, 'tournaments', match.tournamentId), {
@@ -470,6 +502,28 @@ export async function closeMatch(match, scoreA, scoreB, goals, options = {}) {
     ...(match.round === 'FINAL' ? { championPlayerId: winner.winnerId, runnerUpPlayerId: loser, finishedAt: serverTimestamp() } : {}),
   });
   await batch.commit();
+
+  if (match.round === 'GROUP') {
+    const all = await listMatches(match.tournamentId);
+    const pendingGroups = all.some((m) => m.round === 'GROUP' && m.status !== 'finished');
+    const hasQF = all.some((m) => m.round === 'QF');
+    if (!pendingGroups && !hasQF) {
+      const standings = groupStandings(all);
+      const qfPairs = [
+        [standings.A?.[0], standings.B?.[1]],
+        [standings.C?.[0], standings.D?.[1]],
+        [standings.B?.[0], standings.A?.[1]],
+        [standings.D?.[0], standings.C?.[1]],
+      ];
+      for (let i = 0; i < qfPairs.length; i += 1) {
+        const [a, b] = qfPairs[i];
+        if (!a?.id || !b?.id) continue;
+        await addDoc(collection(db, 'matches'), { tournamentId: match.tournamentId, round: 'QF', matchNumber: i + 1, bracketPosition: i + 1, playerAId: a.id, playerBId: b.id, playerAName: a.name, playerBName: b.name, teamA: a.team, teamB: b.team, status: 'pending', kickoffOrder: 100 + (i + 1), imageUrl: '', createdAt: serverTimestamp() });
+      }
+      await addDoc(collection(db, 'feedEvents'), { tournamentId: match.tournamentId, text: 'Fase de grupos cerrada. Ya están definidos los cuartos de final.', tone: 'epic', createdAt: serverTimestamp() });
+    }
+    return;
+  }
 
   if (!isTwoLegs || (isTwoLegs && (match.leg ?? 1) === 2)) {
     const slot = nextSlot(match);
@@ -502,6 +556,18 @@ function goalsAgainstFor(matches, playerId) {
 
 function winsFor(matches, playerId) {
   return matches.filter((match) => match.winnerId === playerId).length;
+}
+
+function leaguePointsFor(matches, playerId) {
+  return matches.reduce((total, match) => {
+    if (match.status !== 'finished') return total;
+    const plays = match.playerAId === playerId || match.playerBId === playerId;
+    if (!plays) return total;
+    const scoreA = Number(match.scoreA ?? 0);
+    const scoreB = Number(match.scoreB ?? 0);
+    if (scoreA === scoreB) return total + 1;
+    return total + (match.winnerId === playerId ? 2 : 0);
+  }, 0);
 }
 
 async function awardTournamentPoints(tournament, championId, runnerUpId) {
@@ -543,7 +609,8 @@ async function awardTournamentPoints(tournament, championId, runnerUpId) {
     const placementPointValue = placementPoints[placement];
     const scorerBonus = topScorerIds.includes(participant.playerId) ? 2 : 0;
     const defenseBonus = wallIds.includes(participant.playerId) ? 1 : 0;
-    const totalTournamentPoints = winsFor(matches, participant.playerId) * 2 + placementPointValue + scorerBonus + defenseBonus;
+    const victoryPoints = leaguePointsFor(matches, participant.playerId);
+    const totalTournamentPoints = victoryPoints + placementPointValue + scorerBonus + defenseBonus;
     const playerRef = doc(db, 'players', participant.playerId);
     batch.update(playerRef, {
       'statsGlobal.tournamentsPlayed': increment(1),
@@ -571,7 +638,7 @@ async function awardTournamentPoints(tournament, championId, runnerUpId) {
       title: participant.playerId === championId,
       runnerUp: participant.playerId === runnerUpId,
       placementPoints: placementPointValue,
-      victoryPoints: winsFor(matches, participant.playerId) * 2,
+      victoryPoints,
       scorerBonus,
       defenseBonus,
       annualPoints: totalTournamentPoints,
@@ -692,13 +759,14 @@ export async function getPlayerDashboard(playerId, tokenValue) {
   if (tokenValue !== player.accessToken) return { valid: false, reason: 'Token incorrecto o regenerado', player };
   const activeTournament = await getActiveTournament();
   const season = activeTournament?.season ?? new Date().getFullYear();
-  const [status, recentMatches, seasonPosition, results] = await Promise.all([
+  const [status, recentMatches, seasonPosition, results, tournaments] = await Promise.all([
     activeTournament ? getPlayerTournamentStatus(playerId, activeTournament.id) : Promise.resolve({ state: 'Sin torneo activo', tournament: null, participant: null, nextMatch: null, lastMatch: null, topScorers: [] }),
     getPlayerRecentMatches(playerId, 6),
     getPlayerSeasonPosition(playerId, season),
     listPlayerTournamentResults(playerId),
+    listTournaments(),
   ]);
-  return { valid: true, player, activeTournament, status, recentMatches, seasonPosition, results, season };
+  return { valid: true, player, activeTournament, status, recentMatches, seasonPosition, results, tournaments, season };
 }
 
 

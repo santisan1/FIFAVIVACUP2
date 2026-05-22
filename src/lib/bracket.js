@@ -1,21 +1,49 @@
 export const roundLabels = {
+    GROUP: 'Fase de grupos',
     R16: 'Octavos de final',
     QF: 'Cuartos de final',
     SF: 'Semifinales',
     FINAL: 'Final',
     THIRD_PLACE: 'Tercer puesto',
 };
-export const roundOrder = ['R16', 'QF', 'SF', 'FINAL'];
+export const roundOrder = ['GROUP', 'R16', 'QF', 'SF', 'FINAL'];
 export function shuffle(items) {
     return [...items]
         .map((value) => ({ value, sort: crypto.getRandomValues(new Uint32Array(1))[0] }))
         .sort((a, b) => a.sort - b.sort)
         .map(({ value }) => value);
 }
-export function createInitialMatches(players, tournamentId) {
+export function createInitialMatches(players, tournamentId, mode = 'single_leg') {
     if (players.length !== 16)
         throw new Error('El sorteo necesita exactamente 16 jugadores.');
     const shuffled = shuffle(players);
+    if (mode === 'groups_16') {
+        const groups = ['A', 'B', 'C', 'D'].map((name, groupIndex) => ({
+            name,
+            players: shuffled.slice(groupIndex * 4, groupIndex * 4 + 4),
+        }));
+        const fixtures = [];
+        groups.forEach((group, gIndex) => {
+            const [p1, p2, p3, p4] = group.players;
+            const pairs = [[p1, p2], [p3, p4], [p1, p3], [p2, p4], [p1, p4], [p2, p3]];
+            pairs.forEach(([a, b], index) => fixtures.push({
+                tournamentId,
+                round: 'GROUP',
+                groupName: group.name,
+                matchNumber: index + 1,
+                bracketPosition: gIndex * 10 + (index + 1),
+                playerAId: a.playerId,
+                playerBId: b.playerId,
+                playerAName: a.playerNickname || a.playerName,
+                playerBName: b.playerNickname || b.playerName,
+                teamA: a.teamName,
+                teamB: b.teamName,
+                status: 'pending',
+                kickoffOrder: gIndex * 10 + index + 1,
+            }));
+        });
+        return fixtures;
+    }
     return Array.from({ length: 8 }, (_, index) => {
         const a = shuffled[index * 2];
         const b = shuffled[index * 2 + 1];
