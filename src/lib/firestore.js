@@ -308,15 +308,40 @@ export async function listFeed(tournamentId) {
 }
 
 export async function runDraw(tournamentId) {
-  const [players, existingMatches] = await Promise.all([listTournamentPlayers(tournamentId), listMatches(tournamentId)]);
+  const [players, existingMatches, tournament] = await Promise.all([listTournamentPlayers(tournamentId), listMatches(tournamentId), getTournament(tournamentId)]);
   if (existingMatches.length > 0) throw new Error('Este torneo ya tiene bracket sorteado.');
   if (players.length !== 16) throw new Error('El sorteo necesita exactamente 16 jugadores únicos.');
-  const matches = createInitialMatches(players, tournamentId);
+  const matches = createInitialMatches(players, tournamentId, tournament?.mode ?? 'single_leg');
   const batch = writeBatch(db);
   matches.forEach((match) => batch.set(doc(collection(db, 'matches')), { ...match, imageUrl: '', createdAt: serverTimestamp() }));
   batch.update(doc(db, 'tournaments', tournamentId), { status: 'draw', startedAt: serverTimestamp(), updatedAt: serverTimestamp() });
-  batch.set(doc(collection(db, 'feedEvents')), { tournamentId, text: 'El sorteo explotó la arena: los octavos ya están listos.', tone: 'epic', createdAt: serverTimestamp() });
+  batch.set(doc(collection(db, 'feedEvents')), { tournamentId, text: tournament?.mode === 'groups_16' ? 'Sorteo listo: 4 grupos de 4 y camino directo a cuartos.' : 'El sorteo explotó la arena: los octavos ya están listos.', tone: 'epic', createdAt: serverTimestamp() });
   await batch.commit();
+}
+
+function groupStandings(matches) {
+  const table = new Map();
+  matches.filter((m) => m.round === 'GROUP' && m.status === 'finished').forEach((m) => {
+    const sa = Number(m.scoreA ?? 0); const sb = Number(m.scoreB ?? 0);
+    const up = (id, name, team, gf, ga, pts) => {
+      const row = table.get(id) ?? { id, name, team, pts: 0, gf: 0, ga: 0, gd: 0 };
+      row.pts += pts; row.gf += gf; row.ga += ga; row.gd = row.gf - row.ga;
+      table.set(id, row);
+    };
+    up(m.playerAId, m.playerAName, m.teamA, sa, sb, sa === sb ? 1 : sa > sb ? 2 : 0);
+    up(m.playerBId, m.playerBName, m.teamB, sb, sa, sa === sb ? 1 : sb > sa ? 2 : 0);
+  });
+  const byGroup = new Map();
+  matches.filter((m) => m.round === 'GROUP').forEach((m) => {
+    const g = m.groupName || '?';
+    const current = byGroup.get(g) ?? new Set();
+    current.add(m.playerAId); current.add(m.playerBId);
+    byGroup.set(g, current);
+  });
+  return [...byGroup.entries()].reduce((acc, [g, ids]) => {
+    acc[g] = [...ids].map((id) => table.get(id) ?? { id, pts: 0, gf: 0, ga: 0, gd: 0 }).sort((a, b) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf);
+    return acc;
+  }, {});
 }
 
 export async function updateMatchPlayers(match, input) {
@@ -419,14 +444,19 @@ export async function closeMatch(match, scoreA, scoreB, goals, options = {}) {
       loser = winner.loserId;
     }
   } else {
-    const finalMatch = { ...match, scoreA, scoreB };
-    winner = getWinner(finalMatch);
-    loser = winner.loserId;
+    if (match.round === 'GROUP') {
+      winner = Number(scoreA) === Number(scoreB) ? { winnerId: null, loserId: null, winnerName: '', loserName: '' } : getWinner({ ...match, scoreA, scoreB });
+      loser = winner.loserId;
+    } else {
+      const finalMatch = { ...match, scoreA, scoreB };
+      winner = getWinner(finalMatch);
+      loser = winner.loserId;
+    }
   }
   const winnerName = winner.winnerId ? (winner.winnerId === match.playerAId ? match.playerAName : match.playerBName) : '';
   const loserName = winner.winnerId ? (winner.loserId === match.playerAId ? match.playerAName : match.playerBName) : '';
   const winnerTeam = winner.winnerId ? (winner.winnerId === match.playerAId ? match.teamA : match.teamB) : '';
-  const narrative = winner.winnerId ? resultNarrative({ ...match, scoreA, scoreB }, winnerName, loserName) : `${match.playerAName} y ${match.playerBName} completaron la ida. Todo se define en la vuelta.`;
+  const narrative = winner.winnerId ? resultNarrative({ ...match, scoreA, scoreB }, winnerName, loserName) : match.round === 'GROUP' ? `${match.playerAName} y ${match.playerBName} empataron ${scoreA}-${scoreB} en fase de grupos.` : `${match.playerAName} y ${match.playerBName} completaron la ida. Todo se define en la vuelta.`;
   const batch = writeBatch(db);
 
   batch.update(doc(db, 'matches', match.id), {
@@ -472,6 +502,28 @@ export async function closeMatch(match, scoreA, scoreB, goals, options = {}) {
     ...(match.round === 'FINAL' ? { championPlayerId: winner.winnerId, runnerUpPlayerId: loser, finishedAt: serverTimestamp() } : {}),
   });
   await batch.commit();
+
+  if (match.round === 'GROUP') {
+    const all = await listMatches(match.tournamentId);
+    const pendingGroups = all.some((m) => m.round === 'GROUP' && m.status !== 'finished');
+    const hasQF = all.some((m) => m.round === 'QF');
+    if (!pendingGroups && !hasQF) {
+      const standings = groupStandings(all);
+      const qfPairs = [
+        [standings.A?.[0], standings.B?.[1]],
+        [standings.C?.[0], standings.D?.[1]],
+        [standings.B?.[0], standings.A?.[1]],
+        [standings.D?.[0], standings.C?.[1]],
+      ];
+      for (let i = 0; i < qfPairs.length; i += 1) {
+        const [a, b] = qfPairs[i];
+        if (!a?.id || !b?.id) continue;
+        await addDoc(collection(db, 'matches'), { tournamentId: match.tournamentId, round: 'QF', matchNumber: i + 1, bracketPosition: i + 1, playerAId: a.id, playerBId: b.id, playerAName: a.name, playerBName: b.name, teamA: a.team, teamB: b.team, status: 'pending', kickoffOrder: 100 + (i + 1), imageUrl: '', createdAt: serverTimestamp() });
+      }
+      await addDoc(collection(db, 'feedEvents'), { tournamentId: match.tournamentId, text: 'Fase de grupos cerrada. Ya están definidos los cuartos de final.', tone: 'epic', createdAt: serverTimestamp() });
+    }
+    return;
+  }
 
   if (!isTwoLegs || (isTwoLegs && (match.leg ?? 1) === 2)) {
     const slot = nextSlot(match);

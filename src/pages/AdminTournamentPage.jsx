@@ -135,7 +135,7 @@ export function AdminTournamentPage() {
       const isLeg2 = (match.leg ?? 1) === 2;
       if (!match.playerAId || !match.playerBId) throw new Error('No podés cerrar un partido sin ambos jugadores.');
       if (draft.scoreA === '' || draft.scoreB === '') throw new Error('Cargá ambos scores.');
-      if (!isTwoLegTie && Number(draft.scoreA) === Number(draft.scoreB)) throw new Error('No se permiten empates en eliminación directa.');
+      if (!isTwoLegTie && match.round !== 'GROUP' && Number(draft.scoreA) === Number(draft.scoreB)) throw new Error('No se permiten empates en eliminación directa.');
       if (match.round === 'FINAL' && !window.confirm('¿Cerrar la final y coronar campeón? Esto guarda tournamentResults por playerId y actualiza el ranking anual.')) return;
       const options = {};
       if (match.round === 'FINAL' && Number(draft.scoreA) === Number(draft.scoreB)) {

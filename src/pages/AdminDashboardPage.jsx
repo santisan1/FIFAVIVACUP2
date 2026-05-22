@@ -66,6 +66,7 @@ export function AdminDashboardPage() {
               <select className="input" value={mode} onChange={(e) => setMode(e.target.value)}>
                 <option value="single_leg">Eliminación directa (solo ida)</option>
                 <option value="two_legs">Eliminación ida y vuelta (final a partido único)</option>
+                <option value="groups_16">Fase de grupos (4x4) + Cuartos + Semis + Final</option>
               </select>
               <button className="btn btn-primary w-full" onClick={createNewTournament}><Plus className="h-4 w-4" /> Crear torneo</button>
             </div>
