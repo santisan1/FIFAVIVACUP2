@@ -448,20 +448,22 @@ export async function closeMatch(match, scoreA, scoreB, goals, options = {}) {
   const loserParticipant = participants.find((participant) => participant.playerId === loser);
   if (loserParticipant) batch.update(doc(db, 'tournamentPlayers', loserParticipant.id), { eliminated: true, eliminatedRound: match.round });
 
-  const shouldUpdateStats = !isTwoLegs || (isTwoLegs && (match.leg ?? 1) === 2);
+  const shouldUpdateStats = true;
   const playerUpdates = shouldUpdateStats ? [
-    { id: match.playerAId, won: winner.winnerId === match.playerAId, gf: scoreA, ga: scoreB, name: match.playerAName },
-    { id: match.playerBId, won: winner.winnerId === match.playerBId, gf: scoreB, ga: scoreA, name: match.playerBName },
+    { id: match.playerAId, won: winner.winnerId === match.playerAId, drew: Number(scoreA) === Number(scoreB), gf: scoreA, ga: scoreB, name: match.playerAName },
+    { id: match.playerBId, won: winner.winnerId === match.playerBId, drew: Number(scoreA) === Number(scoreB), gf: scoreB, ga: scoreA, name: match.playerBName },
   ] : [];
   playerUpdates.filter((player) => player.id).forEach((player) => {
+    const annualPoints = player.drew ? 1 : (player.won ? 2 : 0);
     batch.update(doc(db, 'players', player.id), {
       'statsGlobal.matches': increment(1),
-      [`statsGlobal.${player.won ? 'wins' : 'losses'}`]: increment(1),
+      ...(!player.drew ? { [`statsGlobal.${player.won ? 'wins' : 'losses'}`]: increment(1) } : {}),
       'statsGlobal.goalsFor': increment(player.gf),
       'statsGlobal.goalsAgainst': increment(player.ga),
-      [`statsGlobal.annualPoints.${yearKey(tournament.season)}`]: increment(player.won ? 2 : 0),
+      [`statsGlobal.annualPoints.${yearKey(tournament.season)}`]: increment(annualPoints),
     });
-    if (player.won) addAnnualPointEvent(batch, { tournament, playerId: player.id, playerName: player.name, points: 2, reason: `win_${match.id}`, label: 'Victoria' });
+    if (player.won && !player.drew) addAnnualPointEvent(batch, { tournament, playerId: player.id, playerName: player.name, points: 2, reason: `win_${match.id}`, label: 'Victoria' });
+    if (player.drew) addAnnualPointEvent(batch, { tournament, playerId: player.id, playerName: player.name, points: 1, reason: `draw_${match.id}`, label: 'Empate' });
   });
 
   batch.update(doc(db, 'tournaments', match.tournamentId), {
@@ -504,6 +506,18 @@ function winsFor(matches, playerId) {
   return matches.filter((match) => match.winnerId === playerId).length;
 }
 
+function leaguePointsFor(matches, playerId) {
+  return matches.reduce((total, match) => {
+    if (match.status !== 'finished') return total;
+    const plays = match.playerAId === playerId || match.playerBId === playerId;
+    if (!plays) return total;
+    const scoreA = Number(match.scoreA ?? 0);
+    const scoreB = Number(match.scoreB ?? 0);
+    if (scoreA === scoreB) return total + 1;
+    return total + (match.winnerId === playerId ? 2 : 0);
+  }, 0);
+}
+
 async function awardTournamentPoints(tournament, championId, runnerUpId) {
   const [participants, matches, scorerRows] = await Promise.all([
     listTournamentPlayers(tournament.id),
@@ -543,7 +557,8 @@ async function awardTournamentPoints(tournament, championId, runnerUpId) {
     const placementPointValue = placementPoints[placement];
     const scorerBonus = topScorerIds.includes(participant.playerId) ? 2 : 0;
     const defenseBonus = wallIds.includes(participant.playerId) ? 1 : 0;
-    const totalTournamentPoints = winsFor(matches, participant.playerId) * 2 + placementPointValue + scorerBonus + defenseBonus;
+    const victoryPoints = leaguePointsFor(matches, participant.playerId);
+    const totalTournamentPoints = victoryPoints + placementPointValue + scorerBonus + defenseBonus;
     const playerRef = doc(db, 'players', participant.playerId);
     batch.update(playerRef, {
       'statsGlobal.tournamentsPlayed': increment(1),
@@ -571,7 +586,7 @@ async function awardTournamentPoints(tournament, championId, runnerUpId) {
       title: participant.playerId === championId,
       runnerUp: participant.playerId === runnerUpId,
       placementPoints: placementPointValue,
-      victoryPoints: winsFor(matches, participant.playerId) * 2,
+      victoryPoints,
       scorerBonus,
       defenseBonus,
       annualPoints: totalTournamentPoints,
@@ -692,13 +707,14 @@ export async function getPlayerDashboard(playerId, tokenValue) {
   if (tokenValue !== player.accessToken) return { valid: false, reason: 'Token incorrecto o regenerado', player };
   const activeTournament = await getActiveTournament();
   const season = activeTournament?.season ?? new Date().getFullYear();
-  const [status, recentMatches, seasonPosition, results] = await Promise.all([
+  const [status, recentMatches, seasonPosition, results, tournaments] = await Promise.all([
     activeTournament ? getPlayerTournamentStatus(playerId, activeTournament.id) : Promise.resolve({ state: 'Sin torneo activo', tournament: null, participant: null, nextMatch: null, lastMatch: null, topScorers: [] }),
     getPlayerRecentMatches(playerId, 6),
     getPlayerSeasonPosition(playerId, season),
     listPlayerTournamentResults(playerId),
+    listTournaments(),
   ]);
-  return { valid: true, player, activeTournament, status, recentMatches, seasonPosition, results, season };
+  return { valid: true, player, activeTournament, status, recentMatches, seasonPosition, results, tournaments, season };
 }
 
 
