@@ -18,7 +18,10 @@ export function PlayerProfilePage() {
     const persistedToken = incomingToken || localStorage.getItem(`fvc_magic_${playerId}`) || '';
     setLoading(true);
     void getPlayerDashboard(playerId, persistedToken)
-      .then(setDashboard)
+      .then((data) => {
+        if (data?.valid && data?.activeTournament?.id) localStorage.setItem(`fvc_last_tournament_${playerId}`, data.activeTournament.id);
+        setDashboard(data);
+      })
       .catch((error) => {
         if (import.meta.env.DEV) console.error('No se pudo cargar el magic link.', error);
         setDashboard({ valid: false, reason: 'No se pudo cargar Firestore. Revisá conexión o permisos.' });
