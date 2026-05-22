@@ -19,6 +19,7 @@ export function PlayerProfilePage() {
     setLoading(true);
     void getPlayerDashboard(playerId, persistedToken)
       .then((data) => {
+        if (data?.valid) localStorage.setItem('fvc_last_player_id', playerId);
         if (data?.valid && data?.activeTournament?.id) localStorage.setItem(`fvc_last_tournament_${playerId}`, data.activeTournament.id);
         setDashboard(data);
       })
