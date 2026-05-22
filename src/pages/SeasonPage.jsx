@@ -56,7 +56,7 @@ export function SeasonPage() {
             <p className="font-bold">Cómo suma puntos el ranking anual</p>
             <ul className="mt-2 list-disc space-y-1 pl-5 text-slate-300">
               <li>Campeón +10 · Subcampeón +7 · Semifinal +5 · Cuartos +3 · Octavos +1.</li>
-              <li>Cada victoria en partido cerrado suma +2.</li>
+              <li>Puntos por partido: victoria +2 · empate +1 por jugador (incluye cruces ida/vuelta partido a partido).</li>
               <li>Bono goleador del torneo +2 y mejor defensa (menos goles recibidos) +1.</li>
               <li>Todos los puntos se acumulan por jugador permanente (playerId), no por equipo puntual.</li>
             </ul>

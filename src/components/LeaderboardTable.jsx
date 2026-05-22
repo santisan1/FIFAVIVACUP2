@@ -32,7 +32,9 @@ export function LeaderboardTable({ rows, sortBy = 'points', onSortChange }) {
   return (
     <div className="glass overflow-hidden rounded-3xl shadow-card">
       <div className="border-b border-white/10 p-3 text-xs text-slate-400">Orden actual: <span className="font-black text-electric">{sortLabel}</span></div>
-      <table className="w-full text-sm">
+      <div className="border-b border-white/10 bg-electric/5 px-3 py-2 text-xs text-electric">Tip celu: girá el teléfono a horizontal para ver más columnas, o deslizá la tabla a derecha/izquierda.</div>
+      <div className="overflow-x-auto">
+      <table className="w-full min-w-[760px] text-sm">
         <thead className="bg-white/5 text-left text-xs uppercase tracking-[.2em] text-slate-400">
           <tr>
             <th className="p-4">Rank</th>
@@ -60,6 +62,7 @@ export function LeaderboardTable({ rows, sortBy = 'points', onSortChange }) {
           ))}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }
