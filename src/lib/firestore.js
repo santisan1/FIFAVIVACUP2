@@ -707,13 +707,14 @@ export async function getPlayerDashboard(playerId, tokenValue) {
   if (tokenValue !== player.accessToken) return { valid: false, reason: 'Token incorrecto o regenerado', player };
   const activeTournament = await getActiveTournament();
   const season = activeTournament?.season ?? new Date().getFullYear();
-  const [status, recentMatches, seasonPosition, results] = await Promise.all([
+  const [status, recentMatches, seasonPosition, results, tournaments] = await Promise.all([
     activeTournament ? getPlayerTournamentStatus(playerId, activeTournament.id) : Promise.resolve({ state: 'Sin torneo activo', tournament: null, participant: null, nextMatch: null, lastMatch: null, topScorers: [] }),
     getPlayerRecentMatches(playerId, 6),
     getPlayerSeasonPosition(playerId, season),
     listPlayerTournamentResults(playerId),
+    listTournaments(),
   ]);
-  return { valid: true, player, activeTournament, status, recentMatches, seasonPosition, results, season };
+  return { valid: true, player, activeTournament, status, recentMatches, seasonPosition, results, tournaments, season };
 }
 
 
