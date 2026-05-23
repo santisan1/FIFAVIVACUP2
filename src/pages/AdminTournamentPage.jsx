@@ -235,7 +235,7 @@ function ParticipantsTab({ available, selectedPlayerId, setSelectedPlayerId, tea
 function groupMatchesForResults(matches) {
   const grouped = new Map();
   matches.forEach((match) => {
-    const isTwoLegTie = (match.leg ?? 1) >= 1 && match.round !== 'FINAL';
+    const isTwoLegTie = (match.leg ?? 1) >= 1 && match.round !== 'FINAL' && match.round !== 'GROUP';
     if (!isTwoLegTie) {
       grouped.set(`single-${match.id}`, { type: 'single', matches: [match] });
       return;
@@ -253,7 +253,7 @@ function groupMatchesForResults(matches) {
 
 function ResultsTab({ matches, scoreDrafts, setDraft, closeQuickMatch, openModal }) {
   const groupedMatches = groupMatchesForResults(matches);
-  return <section className="glass rounded-3xl p-5 shadow-card"><h2 className="text-2xl font-black">Resultados rápidos</h2><p className="text-sm text-slate-400">Ahora podés cargar ida y vuelta en una misma card (4 casilleros) y ver el global antes de cerrar la serie.</p><div className="mt-4 grid gap-3 xl:grid-cols-2">{groupedMatches.map((group) => {
+  return <section className="glass rounded-3xl p-5 shadow-card"><h2 className="text-2xl font-black">Resultados rápidos</h2><p className="text-sm text-slate-400">En fase de grupos todos los partidos son a partido único. La tabla define los 2 clasificados por grupo y al cerrar el último partido se crean automáticamente los cruces de eliminación directa.</p><div className="mt-4 grid gap-3 xl:grid-cols-2">{groupedMatches.map((group) => {
     const leg1 = group.matches[0];
     const leg2 = group.matches[1];
     const leg1A = Number(scoreDrafts[leg1.id]?.scoreA ?? leg1.scoreA ?? 0);
