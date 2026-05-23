@@ -71,7 +71,10 @@ export function TournamentPage() {
   const latest = useMemo(() => matches.filter((match) => match.status === 'finished').slice(-5).reverse(), [matches]);
 
   const readyCount = useMemo(() => participants.filter((participant) => participant.ready).length, [participants]);
-  const drawDefined = useMemo(() => matches.filter((match) => match.round === 'R16' && match.playerAId && match.playerBId).length === 8, [matches]);
+  const drawDefined = useMemo(() => matches.length > 0, [matches]);
+  const isSorteado = drawDefined;
+  const groupStandings = useMemo(() => buildGroupData(matches), [matches]);
+  const qfExists = useMemo(() => matches.some((m) => m.round === 'QF'), [matches]);
 
   if (loading) return <div className="space-y-5"><div className="glass h-56 animate-pulse rounded-[2rem]" /><div className="glass h-96 animate-pulse rounded-3xl" /></div>;
   if (!tournament) return <section className="glass rounded-[2rem] p-8 text-center"><h1 className="text-3xl font-black">Torneo no encontrado</h1><p className="mt-2 text-slate-400">Revisá el link o pedile uno nuevo al admin.</p></section>;
@@ -91,7 +94,7 @@ export function TournamentPage() {
         <section className="glass rounded-3xl p-5 text-center shadow-card">
           {tournament.status === 'draft' && <><h2 className="text-3xl font-black">Torneo en preparación</h2><p className="mt-2 text-slate-300">El admin está cargando jugadores y equipos.</p></>}
           {tournament.status === 'lobby' && <><h2 className="text-3xl font-black">Sala pública</h2><p className="mt-2 text-slate-300">{readyCount}/{participants.length || 16} jugadores presentes. Esperando sorteo.</p><div className="mt-4 h-4 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-gradient-to-r from-winner to-electric" style={{ width: `${participants.length ? (readyCount / participants.length) * 100 : 0}%` }} /></div></>}
-          {tournament.status === 'draw' && <><h2 className="text-3xl font-black">Sorteo en curso</h2><p className="mt-2 text-slate-300">Los cruces se están revelando con suspenso, uno por uno.</p><div className="mt-5 text-left"><DrawReveal participants={participants} /></div></>}
+          {tournament.status === 'draw' && !isSorteado && <><h2 className="text-3xl font-black">Sorteo en curso</h2><p className="mt-2 text-slate-300">Los cruces se están revelando con suspenso, uno por uno.</p><div className="mt-5 text-left"><DrawReveal participants={participants} mode={tournament.mode} /></div></>}
         </section>
       )}
 
@@ -139,6 +142,23 @@ export function TournamentPage() {
         </section>
       )}
 
+
+      {tournament.mode === 'groups_16' && Object.keys(groupStandings).length > 0 && (
+        <section className={`glass rounded-3xl p-5 shadow-card ${qfExists ? 'opacity-60' : ''}`}>
+          <h2 className="text-2xl font-black">Grupos y clasificación</h2>
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            {['A','B','C','D'].map((g) => (
+              <div key={g} className="overflow-x-auto rounded-2xl border border-white/10">
+                <table className="w-full text-sm"><thead className="bg-white/5 text-xs uppercase text-slate-300"><tr><th className="p-2 text-left">Grupo {g}</th><th className="p-2">PJ</th><th className="p-2">GF</th><th className="p-2">GC</th><th className="p-2">PTS</th></tr></thead><tbody>{(groupStandings[g]||[]).map((r,i)=><tr key={r.id} className="border-t border-white/10"><td className="p-2">{i+1}. {r.name}</td><td className="p-2 text-center">{r.pj}</td><td className="p-2 text-center">{r.gf}</td><td className="p-2 text-center">{r.ga}</td><td className="p-2 text-center font-black text-electric">{r.pts}</td></tr>)}</tbody></table>
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 rounded-2xl bg-white/5 p-3 text-sm">
+            <b>Cruces a cuartos:</b> A1 vs B2 · C1 vs D2 · B1 vs A2 · D1 vs C2
+          </div>
+        </section>
+      )}
+
       <div className="grid gap-6 xl:grid-cols-[1fr_380px]">
         <BracketView matches={matches} />
         <aside className="space-y-5">
@@ -164,4 +184,37 @@ function PodiumCard({ label, player, active, accent }) {
 
 function MiniMatch({ match, result = false }) { return <div className="rounded-2xl bg-white/5 p-3 text-sm"><div className="flex items-center justify-between gap-2"><b>{match.playerAName} vs {match.playerBName}</b><span className="text-xs text-electric">{roundLabels[match.round]}</span></div><p className="text-slate-400">{result ? `${match.scoreA}-${match.scoreB}` : `${match.teamA} vs ${match.teamB}`}</p></div>; }
 function Panel({ title, children }) { return <section className="glass rounded-3xl p-4 shadow-card"><h2 className="mb-3 font-black"><Trophy className="mr-2 inline h-4 w-4 text-electric" />{title}</h2><div className="space-y-2">{children}</div></section>; }
+
+
+function buildGroupData(matches) {
+  const groupMatches = matches.filter((m) => m.round === 'GROUP');
+  const byGroup = new Map();
+  groupMatches.forEach((m) => {
+    const g = m.groupName || '?';
+    const row = byGroup.get(g) || [];
+    row.push(m);
+    byGroup.set(g, row);
+  });
+  const standings = {};
+  byGroup.forEach((groupRows, g) => {
+    const table = new Map();
+    const up = (id, name, team, gf, ga, pts) => {
+      const r = table.get(id) || { id, name, team, pts: 0, gf: 0, ga: 0, pj: 0, gd: 0 };
+      r.pts += pts; r.gf += gf; r.ga += ga; r.pj += 1; r.gd = r.gf - r.ga;
+      table.set(id, r);
+    };
+    groupRows.filter((m) => m.status === 'finished').forEach((m) => {
+      const sa = Number(m.scoreA ?? 0); const sb = Number(m.scoreB ?? 0);
+      up(m.playerAId, m.playerAName, m.teamA, sa, sb, sa === sb ? 1 : sa > sb ? 2 : 0);
+      up(m.playerBId, m.playerBName, m.teamB, sb, sa, sa === sb ? 1 : sb > sa ? 2 : 0);
+    });
+    groupRows.forEach((m) => {
+      if (!table.has(m.playerAId)) table.set(m.playerAId, { id: m.playerAId, name: m.playerAName, team: m.teamA, pts: 0, gf: 0, ga: 0, pj: 0, gd: 0 });
+      if (!table.has(m.playerBId)) table.set(m.playerBId, { id: m.playerBId, name: m.playerBName, team: m.teamB, pts: 0, gf: 0, ga: 0, pj: 0, gd: 0 });
+    });
+    standings[g] = [...table.values()].sort((a,b) => b.pts-a.pts || b.gd-a.gd || b.gf-a.gf);
+  });
+  return standings;
+}
+
 function Empty({ text }) { return <p className="rounded-2xl border border-dashed border-white/10 p-4 text-sm text-slate-400">{text}</p>; }
