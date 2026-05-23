@@ -87,18 +87,6 @@ export function JoinPage() {
         </div>
       </section>}
 
-      <section className="glass rounded-3xl p-5 shadow-card">
-        <p className="text-xs uppercase tracking-[.2em] text-slate-400">Seguimiento del torneo</p>
-        <h3 className="mt-1 text-xl font-black">Estado: {status?.state || 'En competencia'}</h3>
-        {nextMatch ? (
-          <p className="mt-2 text-slate-300">
-            Próximo partido: <b>{nextMatch.playerAName}</b> vs <b>{nextMatch.playerBName}</b>
-          </p>
-        ) : (
-          <p className="mt-2 text-slate-400">Todavía no hay próximo partido confirmado para vos.</p>
-        )}
-      </section>
-
       <div className="flex flex-wrap justify-center gap-3">
         <Link className="btn btn-primary" to={`/player/${player.id}?token=${player.accessToken}`}>Ver mi perfil</Link>
         <Link className="btn btn-ghost" to={`/tournament/${tournament.id}`}>Ver torneo</Link>

@@ -205,8 +205,8 @@ function buildGroupData(matches) {
     };
     groupRows.filter((m) => m.status === 'finished').forEach((m) => {
       const sa = Number(m.scoreA ?? 0); const sb = Number(m.scoreB ?? 0);
-      up(m.playerAId, m.playerAName, m.teamA, sa, sb, sa === sb ? 1 : sa > sb ? 2 : 0);
-      up(m.playerBId, m.playerBName, m.teamB, sb, sa, sa === sb ? 1 : sb > sa ? 2 : 0);
+      up(m.playerAId, m.playerAName, m.teamA, sa, sb, sa === sb ? 1 : sa > sb ? 3 : 0);
+      up(m.playerBId, m.playerBName, m.teamB, sb, sa, sa === sb ? 1 : sb > sa ? 3 : 0);
     });
     groupRows.forEach((m) => {
       if (!table.has(m.playerAId)) table.set(m.playerAId, { id: m.playerAId, name: m.playerAName, team: m.teamA, pts: 0, gf: 0, ga: 0, pj: 0, gd: 0 });
