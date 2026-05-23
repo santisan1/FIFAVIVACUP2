@@ -23,24 +23,35 @@ export function createInitialMatches(players, tournamentId, mode = 'single_leg')
             players: shuffled.slice(groupIndex * 4, groupIndex * 4 + 4),
         }));
         const fixtures = [];
+        const pairsByRound = [
+            [0, 1], [2, 3],
+            [0, 2], [1, 3],
+            [0, 3], [1, 2],
+        ];
         groups.forEach((group, gIndex) => {
-            const [p1, p2, p3, p4] = group.players;
-            const pairs = [[p1, p2], [p3, p4], [p1, p3], [p2, p4], [p1, p4], [p2, p3]];
-            pairs.forEach(([a, b], index) => fixtures.push({
-                tournamentId,
-                round: 'GROUP',
-                groupName: group.name,
-                matchNumber: index + 1,
-                bracketPosition: gIndex * 10 + (index + 1),
-                playerAId: a.playerId,
-                playerBId: b.playerId,
-                playerAName: a.playerNickname || a.playerName,
-                playerBName: b.playerNickname || b.playerName,
-                teamA: a.teamName,
-                teamB: b.teamName,
-                status: 'pending',
-                kickoffOrder: gIndex * 10 + index + 1,
-            }));
+            const players = group.players;
+            for (let i = 0; i < pairsByRound.length; i += 1) {
+                const [aIdx, bIdx] = pairsByRound[i];
+                const a = players[aIdx];
+                const b = players[bIdx];
+                const roundSlot = Math.floor(i / 2) + 1;
+                const groupSlot = i % 2 === 0 ? 1 : 2;
+                fixtures.push({
+                    tournamentId,
+                    round: 'GROUP',
+                    groupName: group.name,
+                    matchNumber: i + 1,
+                    bracketPosition: gIndex * 10 + (i + 1),
+                    playerAId: a.playerId,
+                    playerBId: b.playerId,
+                    playerAName: a.playerNickname || a.playerName,
+                    playerBName: b.playerNickname || b.playerName,
+                    teamA: a.teamName,
+                    teamB: b.teamName,
+                    status: 'pending',
+                    kickoffOrder: (roundSlot * 100) + (groupSlot * 10) + gIndex + 1,
+                });
+            }
         });
         return fixtures;
     }

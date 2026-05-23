@@ -49,7 +49,7 @@ export function JoinPage() {
       <section className="glass rounded-3xl p-5 shadow-card">
         <div className="flex items-center justify-between gap-3"><div><p className="text-xs uppercase tracking-[.2em] text-slate-400">{tournament.name}</p><h2 className="text-2xl font-black">Jugadores presentes</h2></div><b className="text-3xl text-electric">{readyCount}/{participantsCount}</b></div>
         <div className="mt-4 h-4 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-gradient-to-r from-winner to-electric" style={{ width: `${progress}%` }} /></div>
-        <p className="mt-3 text-sm text-slate-400">Cuando estén todos, el admin inicia el sorteo épico.</p>
+        <p className="mt-3 text-sm text-slate-400">Cuando estén todos, el admin inicia el sorteo. Si es modo grupos, primero se arman 4 grupos y después pasan los 2 mejores a cuartos.</p>
       </section>
 
       <div className="flex flex-wrap justify-center gap-3">
