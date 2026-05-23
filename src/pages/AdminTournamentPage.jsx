@@ -60,12 +60,12 @@ export function AdminTournamentPage() {
   const participants = useMemo(() => parts.map((part) => ({ ...part, player: playerById[part.playerId] })).filter((part) => part.player), [parts, playerById]);
   const available = useMemo(() => players.filter((player) => !parts.some((part) => part.playerId === player.id)), [players, parts]);
   const selectedPlayer = playerById[selectedPlayerId];
-  const isSetup = tournament?.status !== 'live';
+  const isSorteado = matches.length > 0;
+  const isSetup = ['draft', 'lobby'].includes(tournament?.status || 'draft');
   const tabs = (isSetup ? setupTabs : liveTabs).filter((tab) => !(tab === 'Sorteo' && isSorteado));
   const readyCount = participants.filter((participant) => participant.teamName?.trim()).length;
   const readyMatches = matches.filter((match) => match.status !== 'finished' && match.playerAId && match.playerBId);
   const finishedMatches = matches.filter((match) => match.status === 'finished');
-  const isSorteado = matches.length > 0;
   const canDraw = parts.length === 16 && !isSorteado;
 
   useEffect(() => {

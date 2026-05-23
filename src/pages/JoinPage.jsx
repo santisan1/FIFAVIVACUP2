@@ -33,8 +33,9 @@ export function JoinPage() {
   if (loading) return <div className="mx-auto max-w-xl glass h-80 animate-pulse rounded-[2rem]" />;
   if (!dashboard?.valid) return <InvalidJoin reason={dashboard?.reason} />;
 
-  const { player, tournament, participant, readyCount, participantsCount } = dashboard;
+  const { player, tournament, participant, readyCount, participantsCount, status } = dashboard;
   const progress = participantsCount ? Math.round((readyCount / participantsCount) * 100) : 0;
+  const nextMatch = status?.nextMatch;
 
   return (
     <div className="mx-auto max-w-2xl space-y-5">
@@ -50,6 +51,18 @@ export function JoinPage() {
         <div className="flex items-center justify-between gap-3"><div><p className="text-xs uppercase tracking-[.2em] text-slate-400">{tournament.name}</p><h2 className="text-2xl font-black">Jugadores presentes</h2></div><b className="text-3xl text-electric">{readyCount}/{participantsCount}</b></div>
         <div className="mt-4 h-4 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-gradient-to-r from-winner to-electric" style={{ width: `${progress}%` }} /></div>
         <p className="mt-3 text-sm text-slate-400">Cuando estén todos, el admin inicia el sorteo. Si es modo grupos, primero se arman 4 grupos y después pasan los 2 mejores a cuartos.</p>
+      </section>
+
+      <section className="glass rounded-3xl p-5 shadow-card">
+        <p className="text-xs uppercase tracking-[.2em] text-slate-400">Seguimiento del torneo</p>
+        <h3 className="mt-1 text-xl font-black">Estado: {status?.state || 'En competencia'}</h3>
+        {nextMatch ? (
+          <p className="mt-2 text-slate-300">
+            Próximo partido: <b>{nextMatch.playerAName}</b> vs <b>{nextMatch.playerBName}</b>
+          </p>
+        ) : (
+          <p className="mt-2 text-slate-400">Todavía no hay próximo partido confirmado para vos.</p>
+        )}
       </section>
 
       <div className="flex flex-wrap justify-center gap-3">
