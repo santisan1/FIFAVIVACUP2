@@ -62,7 +62,7 @@ export function AdminTournamentPage() {
   const selectedPlayer = playerById[selectedPlayerId];
   const isSorteado = matches.length > 0;
   const isSetup = ['draft', 'lobby'].includes(tournament?.status || 'draft');
-  const tabs = (isSetup ? setupTabs : liveTabs).filter((tab) => !(tab === 'Sorteo' && isSorteado));
+  const tabs = isSetup ? setupTabs : liveTabs;
   const readyCount = participants.filter((participant) => participant.teamName?.trim()).length;
   const readyMatches = matches.filter((match) => match.status !== 'finished' && match.playerAId && match.playerBId);
   const finishedMatches = matches.filter((match) => match.status === 'finished');
@@ -211,7 +211,7 @@ export function AdminTournamentPage() {
 
         {activeTab === 'Resumen' && <SummaryTab parts={parts} readyMatches={readyMatches} finishedMatches={finishedMatches} setActiveTab={setActiveTab} />}
         {activeTab === 'Participantes' && <ParticipantsTab available={available} selectedPlayerId={selectedPlayerId} setSelectedPlayerId={setSelectedPlayerId} teamDraft={teamDraft} setTeamDraft={setTeamDraft} selectedPlayer={selectedPlayer} participants={participants} teamEdits={teamEdits} setTeamEdits={setTeamEdits} addParticipant={handleAddParticipant} saveParticipantTeam={saveParticipantTeam} refresh={refresh} matches={matches} />}
-        {activeTab === 'Sorteo' && !isSorteado && <DrawReveal participants={participants} mode={tournament?.mode} />}
+        {activeTab === 'Sorteo' && <DrawReveal participants={participants} mode={tournament?.mode} />}
         {activeTab === 'Bracket' && <section className="space-y-4"><BracketView matches={matches} onMatchClick={setSelectedMatch} admin />{matches.length === 0 && <Empty text="Confirmá 16 participantes y sorteá para crear el bracket." />}</section>}
         {activeTab === 'Resultados' && <ResultsTab matches={matches} scoreDrafts={scoreDrafts} setDraft={setDraft} closeQuickMatch={closeQuickMatch} openModal={setSelectedMatch} />}
                 {activeTab === 'Links' && <LinksTab participants={participants} copied={copied} copyText={copyText} />}
