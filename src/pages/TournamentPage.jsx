@@ -149,7 +149,7 @@ export function TournamentPage() {
           <div className="mt-4 grid gap-3 md:grid-cols-2">
             {['A','B','C','D'].map((g) => (
               <div key={g} className="overflow-x-auto rounded-2xl border border-white/10">
-                <table className="w-full text-sm"><thead className="bg-white/5 text-xs uppercase text-slate-300"><tr><th className="p-2 text-left">Grupo {g}</th><th className="p-2">PJ</th><th className="p-2">GF</th><th className="p-2">GC</th><th className="p-2">PTS</th></tr></thead><tbody>{(groupStandings[g]||[]).map((r,i)=><tr key={r.id} className="border-t border-white/10"><td className="p-2">{i+1}. {r.name}</td><td className="p-2 text-center">{r.pj}</td><td className="p-2 text-center">{r.gf}</td><td className="p-2 text-center">{r.ga}</td><td className="p-2 text-center font-black text-electric">{r.pts}</td></tr>)}</tbody></table>
+                <table className="w-full min-w-[420px] text-sm"><thead className="bg-white/5 text-xs uppercase text-slate-300"><tr><th className="p-2 text-left">Grupo {g}</th><th className="p-2">PJ</th><th className="p-2">GF</th><th className="p-2">GC</th><th className="p-2">DG</th><th className="p-2">PTS</th></tr></thead><tbody>{(groupStandings[g]||[]).map((r,i)=><tr key={r.id} className="border-t border-white/10"><td className="p-2 whitespace-nowrap">{i+1}. {r.name}</td><td className="p-2 text-center">{r.pj}</td><td className="p-2 text-center">{r.gf}</td><td className="p-2 text-center">{r.ga}</td><td className="p-2 text-center">{r.gd}</td><td className="p-2 text-center font-black text-electric">{r.pts}</td></tr>)}</tbody></table>
               </div>
             ))}
           </div>
