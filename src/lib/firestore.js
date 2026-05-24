@@ -476,7 +476,7 @@ export async function closeMatch(match, scoreA, scoreB, goals, options = {}) {
   });
 
   const loserParticipant = participants.find((participant) => participant.playerId === loser);
-  if (loserParticipant) batch.update(doc(db, 'tournamentPlayers', loserParticipant.id), { eliminated: true, eliminatedRound: match.round });
+  if (match.round !== 'GROUP' && loserParticipant) batch.update(doc(db, 'tournamentPlayers', loserParticipant.id), { eliminated: true, eliminatedRound: match.round });
 
   const shouldUpdateStats = true;
   const playerUpdates = shouldUpdateStats ? [
@@ -734,9 +734,10 @@ export async function getPlayerTournamentStatus(playerId, tournamentId) {
   const finished = playerMatches.filter((match) => match.status === 'finished');
   const lastMatch = finished.at(-1) ?? null;
   const nextMatch = playerMatches.find((match) => match.status !== 'finished' && match.playerAId && match.playerBId) ?? null;
-  const lostMatch = finished.find((match) => match.loserId === playerId) ?? null;
+  const lostMatch = finished.find((match) => match.round !== 'GROUP' && match.loserId === playerId) ?? null;
   const champion = tournament.championPlayerId === playerId;
-  const eliminated = Boolean(lostMatch || participant?.eliminated);
+  const eliminatedByFlag = Boolean(participant?.eliminated && participant?.eliminatedRound !== 'GROUP');
+  const eliminated = Boolean(lostMatch || eliminatedByFlag);
   let state = 'Sin torneo activo';
   if (champion) state = 'Campeón';
   else if (eliminated) state = 'Eliminado';
