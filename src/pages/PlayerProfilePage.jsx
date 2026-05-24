@@ -10,9 +10,11 @@ export function PlayerProfilePage() {
   const [params] = useSearchParams();
   const [dashboard, setDashboard] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [showIntro, setShowIntro] = useState(true);
+  const [showIntro, setShowIntro] = useState(false);
 
   useEffect(() => {
+    const introSeen = localStorage.getItem(`fvc_intro_seen_${playerId}`) === '1';
+    setShowIntro(!introSeen);
     const incomingToken = params.get('token');
     if (incomingToken) localStorage.setItem(`fvc_magic_${playerId}`, incomingToken);
     const persistedToken = incomingToken || localStorage.getItem(`fvc_magic_${playerId}`) || '';
@@ -32,7 +34,7 @@ export function PlayerProfilePage() {
 
   if (loading) return <SplashScreen />;
   if (!dashboard?.valid) return <InvalidLink reason={dashboard?.reason} />;
-  if (showIntro) return <SplashScreen onEnter={() => setShowIntro(false)} playerName={dashboard?.player?.nickname || dashboard?.player?.name} tournamentName={dashboard?.activeTournament?.name} />;
+  if (showIntro) return <SplashScreen onEnter={() => { localStorage.setItem(`fvc_intro_seen_${playerId}`, '1'); setShowIntro(false); }} playerName={dashboard?.player?.nickname || dashboard?.player?.name} tournamentName={dashboard?.activeTournament?.name} />;
 
   const { player, activeTournament, status, recentMatches, seasonPosition, results, tournaments = [], season } = dashboard;
   const stats = player.statsGlobal;

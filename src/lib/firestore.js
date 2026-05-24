@@ -328,8 +328,8 @@ function groupStandings(matches) {
       row.pts += pts; row.gf += gf; row.ga += ga; row.gd = row.gf - row.ga;
       table.set(id, row);
     };
-    up(m.playerAId, m.playerAName, m.teamA, sa, sb, sa === sb ? 1 : sa > sb ? 2 : 0);
-    up(m.playerBId, m.playerBName, m.teamB, sb, sa, sa === sb ? 1 : sb > sa ? 2 : 0);
+    up(m.playerAId, m.playerAName, m.teamA, sa, sb, sa === sb ? 1 : sa > sb ? 3 : 0);
+    up(m.playerBId, m.playerBName, m.teamB, sb, sa, sa === sb ? 1 : sb > sa ? 3 : 0);
   });
   const byGroup = new Map();
   matches.filter((m) => m.round === 'GROUP').forEach((m) => {
@@ -476,7 +476,7 @@ export async function closeMatch(match, scoreA, scoreB, goals, options = {}) {
   });
 
   const loserParticipant = participants.find((participant) => participant.playerId === loser);
-  if (loserParticipant) batch.update(doc(db, 'tournamentPlayers', loserParticipant.id), { eliminated: true, eliminatedRound: match.round });
+  if (match.round !== 'GROUP' && loserParticipant) batch.update(doc(db, 'tournamentPlayers', loserParticipant.id), { eliminated: true, eliminatedRound: match.round });
 
   const shouldUpdateStats = true;
   const playerUpdates = shouldUpdateStats ? [
@@ -484,7 +484,7 @@ export async function closeMatch(match, scoreA, scoreB, goals, options = {}) {
     { id: match.playerBId, won: winner.winnerId === match.playerBId, drew: Number(scoreA) === Number(scoreB), gf: scoreB, ga: scoreA, name: match.playerBName },
   ] : [];
   playerUpdates.filter((player) => player.id).forEach((player) => {
-    const annualPoints = player.drew ? 1 : (player.won ? 2 : 0);
+    const annualPoints = player.drew ? 1 : (player.won ? 3 : 0);
     batch.update(doc(db, 'players', player.id), {
       'statsGlobal.matches': increment(1),
       ...(!player.drew ? { [`statsGlobal.${player.won ? 'wins' : 'losses'}`]: increment(1) } : {}),
@@ -492,7 +492,7 @@ export async function closeMatch(match, scoreA, scoreB, goals, options = {}) {
       'statsGlobal.goalsAgainst': increment(player.ga),
       [`statsGlobal.annualPoints.${yearKey(tournament.season)}`]: increment(annualPoints),
     });
-    if (player.won && !player.drew) addAnnualPointEvent(batch, { tournament, playerId: player.id, playerName: player.name, points: 2, reason: `win_${match.id}`, label: 'Victoria' });
+    if (player.won && !player.drew) addAnnualPointEvent(batch, { tournament, playerId: player.id, playerName: player.name, points: 3, reason: `win_${match.id}`, label: 'Victoria' });
     if (player.drew) addAnnualPointEvent(batch, { tournament, playerId: player.id, playerName: player.name, points: 1, reason: `draw_${match.id}`, label: 'Empate' });
   });
 
@@ -566,7 +566,7 @@ function leaguePointsFor(matches, playerId) {
     const scoreA = Number(match.scoreA ?? 0);
     const scoreB = Number(match.scoreB ?? 0);
     if (scoreA === scoreB) return total + 1;
-    return total + (match.winnerId === playerId ? 2 : 0);
+    return total + (match.winnerId === playerId ? 3 : 0);
   }, 0);
 }
 
@@ -692,7 +692,11 @@ export async function buildRanking(year) {
     wins: player.statsGlobal?.wins ?? 0,
     goalsFor: player.statsGlobal?.goalsFor ?? 0,
     goalsAgainst: player.statsGlobal?.goalsAgainst ?? 0,
-  })).sort((a, b) => b.points - a.points || b.wins - a.wins || b.goalsFor - a.goalsFor);
+  })).sort((a, b) => {
+    const goalDiffA = (a.goalsFor ?? 0) - (a.goalsAgainst ?? 0);
+    const goalDiffB = (b.goalsFor ?? 0) - (b.goalsAgainst ?? 0);
+    return b.points - a.points || goalDiffB - goalDiffA || b.goalsFor - a.goalsFor;
+  });
 }
 
 export async function getPlayerNextMatch(playerId, tournamentId) {
@@ -730,9 +734,10 @@ export async function getPlayerTournamentStatus(playerId, tournamentId) {
   const finished = playerMatches.filter((match) => match.status === 'finished');
   const lastMatch = finished.at(-1) ?? null;
   const nextMatch = playerMatches.find((match) => match.status !== 'finished' && match.playerAId && match.playerBId) ?? null;
-  const lostMatch = finished.find((match) => match.loserId === playerId) ?? null;
+  const lostMatch = finished.find((match) => match.round !== 'GROUP' && match.loserId === playerId) ?? null;
   const champion = tournament.championPlayerId === playerId;
-  const eliminated = Boolean(lostMatch || participant?.eliminated);
+  const eliminatedByFlag = Boolean(participant?.eliminated && participant?.eliminatedRound !== 'GROUP');
+  const eliminated = Boolean(lostMatch || eliminatedByFlag);
   let state = 'Sin torneo activo';
   if (champion) state = 'Campeón';
   else if (eliminated) state = 'Eliminado';
