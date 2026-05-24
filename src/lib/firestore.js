@@ -328,8 +328,8 @@ function groupStandings(matches) {
       row.pts += pts; row.gf += gf; row.ga += ga; row.gd = row.gf - row.ga;
       table.set(id, row);
     };
-    up(m.playerAId, m.playerAName, m.teamA, sa, sb, sa === sb ? 1 : sa > sb ? 2 : 0);
-    up(m.playerBId, m.playerBName, m.teamB, sb, sa, sa === sb ? 1 : sb > sa ? 2 : 0);
+    up(m.playerAId, m.playerAName, m.teamA, sa, sb, sa === sb ? 1 : sa > sb ? 3 : 0);
+    up(m.playerBId, m.playerBName, m.teamB, sb, sa, sa === sb ? 1 : sb > sa ? 3 : 0);
   });
   const byGroup = new Map();
   matches.filter((m) => m.round === 'GROUP').forEach((m) => {
@@ -484,7 +484,7 @@ export async function closeMatch(match, scoreA, scoreB, goals, options = {}) {
     { id: match.playerBId, won: winner.winnerId === match.playerBId, drew: Number(scoreA) === Number(scoreB), gf: scoreB, ga: scoreA, name: match.playerBName },
   ] : [];
   playerUpdates.filter((player) => player.id).forEach((player) => {
-    const annualPoints = player.drew ? 1 : (player.won ? 2 : 0);
+    const annualPoints = player.drew ? 1 : (player.won ? 3 : 0);
     batch.update(doc(db, 'players', player.id), {
       'statsGlobal.matches': increment(1),
       ...(!player.drew ? { [`statsGlobal.${player.won ? 'wins' : 'losses'}`]: increment(1) } : {}),
@@ -492,7 +492,7 @@ export async function closeMatch(match, scoreA, scoreB, goals, options = {}) {
       'statsGlobal.goalsAgainst': increment(player.ga),
       [`statsGlobal.annualPoints.${yearKey(tournament.season)}`]: increment(annualPoints),
     });
-    if (player.won && !player.drew) addAnnualPointEvent(batch, { tournament, playerId: player.id, playerName: player.name, points: 2, reason: `win_${match.id}`, label: 'Victoria' });
+    if (player.won && !player.drew) addAnnualPointEvent(batch, { tournament, playerId: player.id, playerName: player.name, points: 3, reason: `win_${match.id}`, label: 'Victoria' });
     if (player.drew) addAnnualPointEvent(batch, { tournament, playerId: player.id, playerName: player.name, points: 1, reason: `draw_${match.id}`, label: 'Empate' });
   });
 
@@ -566,7 +566,7 @@ function leaguePointsFor(matches, playerId) {
     const scoreA = Number(match.scoreA ?? 0);
     const scoreB = Number(match.scoreB ?? 0);
     if (scoreA === scoreB) return total + 1;
-    return total + (match.winnerId === playerId ? 2 : 0);
+    return total + (match.winnerId === playerId ? 3 : 0);
   }, 0);
 }
 

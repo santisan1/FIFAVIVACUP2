@@ -149,7 +149,7 @@ export function TournamentPage() {
           <div className="mt-4 grid gap-3 md:grid-cols-2">
             {['A','B','C','D'].map((g) => (
               <div key={g} className="overflow-x-auto rounded-2xl border border-white/10">
-                <table className="w-full text-sm"><thead className="bg-white/5 text-xs uppercase text-slate-300"><tr><th className="p-2 text-left">Grupo {g}</th><th className="p-2">PJ</th><th className="p-2">GF</th><th className="p-2">GC</th><th className="p-2">PTS</th></tr></thead><tbody>{(groupStandings[g]||[]).map((r,i)=><tr key={r.id} className="border-t border-white/10"><td className="p-2">{i+1}. {r.name}</td><td className="p-2 text-center">{r.pj}</td><td className="p-2 text-center">{r.gf}</td><td className="p-2 text-center">{r.ga}</td><td className="p-2 text-center font-black text-electric">{r.pts}</td></tr>)}</tbody></table>
+                <table className="w-full min-w-[420px] text-sm"><thead className="bg-white/5 text-xs uppercase text-slate-300"><tr><th className="p-2 text-left">Grupo {g}</th><th className="p-2">PJ</th><th className="p-2">GF</th><th className="p-2">GC</th><th className="p-2">DG</th><th className="p-2">PTS</th></tr></thead><tbody>{(groupStandings[g]||[]).map((r,i)=><tr key={r.id} className="border-t border-white/10"><td className="p-2 whitespace-nowrap">{i+1}. {r.name}</td><td className="p-2 text-center">{r.pj}</td><td className="p-2 text-center">{r.gf}</td><td className="p-2 text-center">{r.ga}</td><td className="p-2 text-center">{r.gd}</td><td className="p-2 text-center font-black text-electric">{r.pts}</td></tr>)}</tbody></table>
               </div>
             ))}
           </div>
@@ -205,8 +205,8 @@ function buildGroupData(matches) {
     };
     groupRows.filter((m) => m.status === 'finished').forEach((m) => {
       const sa = Number(m.scoreA ?? 0); const sb = Number(m.scoreB ?? 0);
-      up(m.playerAId, m.playerAName, m.teamA, sa, sb, sa === sb ? 1 : sa > sb ? 2 : 0);
-      up(m.playerBId, m.playerBName, m.teamB, sb, sa, sa === sb ? 1 : sb > sa ? 2 : 0);
+      up(m.playerAId, m.playerAName, m.teamA, sa, sb, sa === sb ? 1 : sa > sb ? 3 : 0);
+      up(m.playerBId, m.playerBName, m.teamB, sb, sa, sa === sb ? 1 : sb > sa ? 3 : 0);
     });
     groupRows.forEach((m) => {
       if (!table.has(m.playerAId)) table.set(m.playerAId, { id: m.playerAId, name: m.playerAName, team: m.teamA, pts: 0, gf: 0, ga: 0, pj: 0, gd: 0 });
