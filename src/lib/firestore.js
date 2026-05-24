@@ -692,7 +692,11 @@ export async function buildRanking(year) {
     wins: player.statsGlobal?.wins ?? 0,
     goalsFor: player.statsGlobal?.goalsFor ?? 0,
     goalsAgainst: player.statsGlobal?.goalsAgainst ?? 0,
-  })).sort((a, b) => b.points - a.points || b.wins - a.wins || b.goalsFor - a.goalsFor);
+  })).sort((a, b) => {
+    const goalDiffA = (a.goalsFor ?? 0) - (a.goalsAgainst ?? 0);
+    const goalDiffB = (b.goalsFor ?? 0) - (b.goalsAgainst ?? 0);
+    return b.points - a.points || goalDiffB - goalDiffA || b.goalsFor - a.goalsFor;
+  });
 }
 
 export async function getPlayerNextMatch(playerId, tournamentId) {
