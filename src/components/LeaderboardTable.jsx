@@ -9,10 +9,11 @@ const SORT_OPTIONS = [
 
 function sortRows(rows, sortBy) {
   const sorted = [...rows];
+  const pointsTieBreak = (a, b) => (((b.goalsFor ?? 0) - (b.goalsAgainst ?? 0)) - ((a.goalsFor ?? 0) - (a.goalsAgainst ?? 0))) || ((b.goalsFor ?? 0) - (a.goalsFor ?? 0));
   sorted.sort((a, b) => {
-    if (sortBy === 'goalsAgainst') return a.goalsAgainst - b.goalsAgainst || b.points - a.points;
-    if (sortBy === 'goalDiff') return ((b.goalsFor ?? 0) - (b.goalsAgainst ?? 0)) - ((a.goalsFor ?? 0) - (a.goalsAgainst ?? 0)) || b.points - a.points;
-    return (b[sortBy] ?? 0) - (a[sortBy] ?? 0) || b.points - a.points || b.wins - a.wins;
+    if (sortBy === 'goalsAgainst') return a.goalsAgainst - b.goalsAgainst || b.points - a.points || pointsTieBreak(a, b);
+    if (sortBy === 'goalDiff') return ((b.goalsFor ?? 0) - (b.goalsAgainst ?? 0)) - ((a.goalsFor ?? 0) - (a.goalsAgainst ?? 0)) || b.points - a.points || (b.goalsFor ?? 0) - (a.goalsFor ?? 0);
+    return (b[sortBy] ?? 0) - (a[sortBy] ?? 0) || b.points - a.points || pointsTieBreak(a, b);
   });
   return sorted;
 }
